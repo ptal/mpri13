@@ -7,8 +7,13 @@ open ElaborationErrors
 open ElaborationExceptions
 open ElaborationEnvironment
 
-let string_of_type ty      = ASTio.(XAST.(to_string pprint_ml_type ty))
+let string_of_type ty = ASTio.(XAST.(to_string pprint_ml_type ty))
 
+let rec iter_all_pairs f e = List.iter (fun e' -> f (e, e'))
+
+let rec iter_all_pairs2 f = function
+  | [] -> ()
+  | hd::tl -> (iter_all_pairs f hd tl); (iter_all_pairs2 f tl)
 
 let rec program p = handle_error List.(fun () ->
   flatten (fst (Misc.list_foldmap block ElaborationEnvironment.initial p))
@@ -24,12 +29,26 @@ and block env = function
     ([BDefinition d], env)
 
   | BClassDefinition c ->
-    (** Class definitions are ignored. Student! This is your job! *)
-    ([], env)
+    let env = class_definition env c in
+    ([BClassDefinition c], env)
 
   | BInstanceDefinitions is ->
     (** Instance definitions are ignored. Student! This is your job! *)
     ([], env)
+
+and class_definition env cdef =
+  check_wf_class env cdef;
+  bind_class cdef.class_name cdef env
+
+and check_wf_class env cdef =
+  iter_all_pairs2 (check_superclasses env cdef) cdef.superclasses
+
+and check_superclasses env cdef (k1, k2) =
+  let check_is_superclass c1 c2 =
+    if (is_superclass cdef.class_position c1 c2 env) then
+      raise (SuperclassesCannotBeRelated(cdef.class_position, cdef.class_name, c1, c2)) in
+  check_is_superclass k1 k2;
+  check_is_superclass k2 k1
 
 and type_definitions env (TypeDefs (_, tdefs)) =
   let env = List.fold_left env_of_type_definition env tdefs in
@@ -38,7 +57,6 @@ and type_definitions env (TypeDefs (_, tdefs)) =
 and env_of_type_definition env = function
   | (TypeDef (pos, kind, t, _)) as tdef ->
     bind_type t kind tdef env
-
   | (ExternalType (p, ts, t, os)) as tdef ->
     bind_type t (kind_of_arity (List.length ts)) tdef env
 

@@ -121,3 +121,7 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Identifier `%s' cannot be both overloaded and let-bound."
                    x)
+    | SuperclassesCannotBeRelated (pos, TName cdef_name, TName superclass1, TName superclass2) ->
+      fatal' pos (Printf.sprintf
+                   "  In class declaration `%s', relation between superclasses is forbidden (`%s' is a superclass of `%s')."
+                   cdef_name superclass1 superclass2)
