@@ -1,0 +1,2 @@
+class H 'a { h : 'a -> int }
+class I 'a { h : 'a -> int }
