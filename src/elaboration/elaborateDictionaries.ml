@@ -38,17 +38,32 @@ and block env = function
 
 and class_definition env cdef =
   check_wf_class env cdef;
-  bind_class cdef.class_name cdef env
+  let env = bind_class cdef.class_name cdef env in
+  bind_class_members env cdef
 
 and check_wf_class env cdef =
-  iter_all_pairs2 (check_superclasses env cdef) cdef.superclasses
+  check_superclasses env cdef
 
-and check_superclasses env cdef (k1, k2) =
+and bind_class_members env cdef =
+  let bind_member env (pos, LName name, mtype) = 
+    try
+      let (_, (x, _)) = lookup pos (Name name) env in
+      raise (OverloadedSymbolCannotBeBound(pos, x))
+    with
+    | UnboundIdentifier(_, _) ->
+      let class_param = [cdef.class_parameter] in
+      check_wf_scheme env class_param mtype;
+      bind_scheme (Name name) class_param mtype env in
+  List.fold_left bind_member env cdef.class_members
+
+and check_superclasses env cdef =
   let check_is_superclass c1 c2 =
     if (is_superclass cdef.class_position c1 c2 env) then
       raise (SuperclassesCannotBeRelated(cdef.class_position, cdef.class_name, c1, c2)) in
-  check_is_superclass k1 k2;
-  check_is_superclass k2 k1
+  let check_both_superclass (c1, c2) =
+    check_is_superclass c1 c2;
+    check_is_superclass c2 c1 in
+  iter_all_pairs2 check_both_superclass cdef.superclasses
 
 and type_definitions env (TypeDefs (_, tdefs)) =
   let env = List.fold_left env_of_type_definition env tdefs in
