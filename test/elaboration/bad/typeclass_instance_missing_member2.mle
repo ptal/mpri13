@@ -1,0 +1,2 @@
+class H 'a { x : 'a; y : 'a }
+instance H int { y = 42; y = 23 }

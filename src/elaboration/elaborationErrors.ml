@@ -131,3 +131,13 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Instance member definition `%s' is not declared in the class `%s'."
                    member_name cdef_name)
+
+    | MissingInstanceMember (pos, TName cdef_name, LName member_name) ->
+      fatal' pos (Printf.sprintf
+                   "  Missing instance member `%s' declared in class `%s'."
+                   member_name cdef_name)
+
+    | AlreadyDefinedInstanceMember (pos, LName member_name) ->
+      fatal' pos (Printf.sprintf
+                   "  Instance member `%s' already defined."
+                   member_name)

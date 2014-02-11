@@ -116,3 +116,9 @@ exception SuperclassesCannotBeRelated of position * tname * tname * tname
 (** [InstanceMemberNotInClass] is raised when the instance member name is
     undeclared in the related class. *)
 exception InstanceMemberNotInClass of position * tname * lname
+
+(** [MissingInstanceMember] is raised when an instance member is missing. *)
+exception MissingInstanceMember of position * tname * lname
+
+(** [AlreadyDefinedInstanceMember] is raised when an instance member is already defined. *)
+exception AlreadyDefinedInstanceMember of position * lname

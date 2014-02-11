@@ -47,16 +47,27 @@ and check_wf_instance env idef =
 
 and check_wf_instance_members env idef cdef =
   let env = introduce_type_parameters env idef.instance_parameters in
-  List.iter (check_wf_instance_member env idef cdef) idef.instance_members
+  check_wf_instance_members_name env idef cdef;
+  check_wf_instance_members_body env idef
 
-and check_wf_instance_member env idef cdef (RecordBinding(LName lmember, mem_body)) =
-  check_wf_instance_member_name env idef cdef lmember;
-  ignore (expression env mem_body)
+and check_wf_instance_members_body env idef =
+  let check_body (RecordBinding(_, mem_body)) = ignore (expression env mem_body) in
+  List.iter check_body idef.instance_members
 
-and check_wf_instance_member_name env idef cdef imember_name =
-  let check_name (_, LName cmember_name, _) = imember_name <> cmember_name in
-  if (List.for_all check_name cdef.class_members) then
-    raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(imember_name)))
+and check_wf_instance_members_name env idef cdef =
+  let sort l = List.sort String.compare l in
+  let inames = sort @@ List.map (fun (RecordBinding((LName mname), _)) -> mname) idef.instance_members in
+  let cnames = sort @@ List.map (fun (_,(LName mname),_) -> mname) cdef.class_members in
+  let rec check_members last il cl =
+    match il, cl with
+    | [], [] -> ()
+    | ihd :: _, _ when last = ihd -> raise (AlreadyDefinedInstanceMember(idef.instance_position, LName(ihd)))
+    | ihd :: _, [] -> raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(ihd)))
+    | [], chd :: _ -> raise (MissingInstanceMember(idef.instance_position, cdef.class_name, LName(chd)))
+    | ihd :: _, chd :: _ when ihd <> chd ->
+        raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(chd)))
+    | ihd :: itl, _ :: ctl -> check_members ihd itl ctl in
+  check_members "" inames cnames
 
 and class_definition env cdef =
   check_wf_class env cdef;
