@@ -112,3 +112,7 @@ exception OverloadedSymbolCannotBeBound of Positions.position * name
     a class declaration are related. The first tname is the problematic declaration
     and the others are the clashing superclasses. *)
 exception SuperclassesCannotBeRelated of position * tname * tname * tname
+
+(** [InstanceMemberNotInClass] is raised when the instance member name is
+    undeclared in the related class. *)
+exception InstanceMemberNotInClass of position * tname * lname

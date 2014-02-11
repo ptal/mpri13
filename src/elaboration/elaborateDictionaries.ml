@@ -41,16 +41,22 @@ and instance_definition env idef =
   env
 
 and check_wf_instance env idef =
-  ignore (lookup_class idef.instance_position idef.instance_class_name env);
+  let cdef = lookup_class idef.instance_position idef.instance_class_name env in
   ignore (lookup_type_definition idef.instance_position idef.instance_index env);
-  check_wf_instance_members env idef
+  check_wf_instance_members env idef cdef
 
-and check_wf_instance_members env idef =
+and check_wf_instance_members env idef cdef =
   let env = introduce_type_parameters env idef.instance_parameters in
-  List.iter (check_wf_instance_member env idef) idef.instance_members
+  List.iter (check_wf_instance_member env idef cdef) idef.instance_members
 
-and check_wf_instance_member env idef (RecordBinding(LName lmember, mem_body)) =
+and check_wf_instance_member env idef cdef (RecordBinding(LName lmember, mem_body)) =
+  check_wf_instance_member_name env idef cdef lmember;
   ignore (expression env mem_body)
+
+and check_wf_instance_member_name env idef cdef imember_name =
+  let check_name (_, LName cmember_name, _) = imember_name <> cmember_name in
+  if (List.for_all check_name cdef.class_members) then
+    raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(imember_name)))
 
 and class_definition env cdef =
   check_wf_class env cdef;

@@ -126,3 +126,8 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  In class declaration `%s', relation between superclasses is forbidden (`%s' is a superclass of `%s')."
                    cdef_name superclass1 superclass2)
+
+    | InstanceMemberNotInClass (pos, TName cdef_name, LName member_name) ->
+      fatal' pos (Printf.sprintf
+                   "  Instance member definition `%s' is not declared in the class `%s'."
+                   member_name cdef_name)
