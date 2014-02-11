@@ -33,8 +33,24 @@ and block env = function
     ([BClassDefinition c], env)
 
   | BInstanceDefinitions is ->
-    (** Instance definitions are ignored. Student! This is your job! *)
-    ([], env)
+    let env = instance_definition env is in
+    ([BInstanceDefinitions is], env)
+
+and instance_definition env idef = 
+  List.iter (check_wf_instance env) idef;
+  env
+
+and check_wf_instance env idef =
+  ignore (lookup_class idef.instance_position idef.instance_class_name env);
+  ignore (lookup_type_definition idef.instance_position idef.instance_index env);
+  check_wf_instance_members env idef
+
+and check_wf_instance_members env idef =
+  let env = introduce_type_parameters env idef.instance_parameters in
+  List.iter (check_wf_instance_member env idef) idef.instance_members
+
+and check_wf_instance_member env idef (RecordBinding(LName lmember, mem_body)) =
+  ignore (expression env mem_body)
 
 and class_definition env cdef =
   check_wf_class env cdef;
