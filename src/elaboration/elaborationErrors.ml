@@ -28,7 +28,7 @@ let handle_error f =
                    "  Class `%s' is unbound."
                    x)
 
-    | UnboundInstance (pos, (ClassPredicate(TName class_name, TName idx))) ->
+    | UnboundInstance (pos, (Types.ClassPredicate(TName class_name, TName idx))) ->
       fatal' pos (Printf.sprintf
                    "  Instance `%s' for type `%s' is unbound."
                    class_name idx)
@@ -48,7 +48,7 @@ let handle_error f =
                    "  Class `%s' is already defined."
                    x)
 
-    | AlreadyDefinedInstance (pos, (ClassPredicate(TName class_name, TName idx))) ->
+    | AlreadyDefinedInstance (pos, (Types.ClassPredicate(TName class_name, TName idx))) ->
       fatal' pos (Printf.sprintf
                    "  Instance `%s' of type `%s' is already defined."
                    class_name idx)
@@ -151,3 +151,8 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Instance member `%s' already defined."
                    member_name)
+
+    | InstanceTypingContextCannotBeRelated (pos, TName idef_name, TName superclass1, TName superclass2) ->
+      fatal' pos (Printf.sprintf
+                   "  In instance declaration `%s', relation in the typing context is forbidden (`%s' is a superclass of `%s')."
+                   idef_name superclass1 superclass2)

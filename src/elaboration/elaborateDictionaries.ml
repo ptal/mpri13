@@ -37,13 +37,32 @@ and block env = function
     ([BInstanceDefinitions is], env)
 
 and instance_definition env idefs = 
-  let env = List.fold_left check_wf_instance env idefs in
-  List.iter (check_typing_context_instance env) idefs;
-  env
+  List.fold_left check_wf_instance env idefs
 
-and check_typing_context_instance env idef = ()
+and check_wf_typing_context_instance env idef =
+  let pos = idef.instance_position in
+  let check_typing_context_relation () =
+    let check_is_superclass c1 c2 =
+      if (is_superclass pos c1 c2 env) then
+        raise (InstanceTypingContextCannotBeRelated(pos, idef.instance_class_name, c1, c2)) in
+    let check_both_context (ClassPredicate(name1, _), ClassPredicate(name2, _)) =
+      check_is_superclass name1 name2;
+      check_is_superclass name2 name1 in
+    iter_all_pairs2 check_both_context idef.instance_typing_context in
+
+  let check_typing_context_existence () =
+    let check_typing_context (ClassPredicate(name, idx) as cp) =
+      if List.mem idx idef.instance_parameters then
+        ignore (lookup_class pos name env)
+      else
+        ignore (lookup_instance pos cp env) in
+    List.iter check_typing_context idef.instance_typing_context in
+
+  check_typing_context_existence ();
+  check_typing_context_relation ()
 
 and check_wf_instance env idef =
+  check_wf_typing_context_instance env idef;
   let env = bind_instance (ClassPredicate(idef.instance_class_name, idef.instance_index)) idef env in
   let cdef = lookup_class idef.instance_position idef.instance_class_name env in
   ignore (lookup_type_definition idef.instance_position idef.instance_index env);

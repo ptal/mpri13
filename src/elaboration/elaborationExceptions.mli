@@ -128,3 +128,7 @@ exception MissingInstanceMember of position * tname * lname
 
 (** [AlreadyDefinedInstanceMember] is raised when an instance member is already defined. *)
 exception AlreadyDefinedInstanceMember of position * lname
+
+(** [InstanceTypingContextCannotBeRelated] is raised when two types in the typing context
+    are related (e.g. Ki < Kj). *)
+exception InstanceTypingContextCannotBeRelated of position * tname * tname * tname
