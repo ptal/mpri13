@@ -1,0 +1,6 @@
+(* Restriction made in the parser.mly in the instance declaration rule. *)
+
+class H 'a { x : 'a }
+type ('a, 'b) o = O of 'a * 'b
+instance ['a] H 'a => H (('a, int) o) { x = O['a] (x['a]) }
+instance ['a] H 'a => H (('a, char) o) { x = O['a] (x['a]) }

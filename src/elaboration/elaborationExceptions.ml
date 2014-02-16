@@ -4,9 +4,11 @@ open Name
 exception UnboundIdentifier of position * name
 exception UnboundTypeVariable of position * tname
 exception UnboundClass of position * tname
+exception UnboundInstance of position * Types.class_predicate
 exception UnboundLabel of position * lname
 exception MultipleLabels of position * lname
 exception AlreadyDefinedClass of position * tname
+exception AlreadyDefinedInstance of position * Types.class_predicate
 exception InvalidTypeApplication of position
 exception InvalidDataConstructorApplication of position
 exception PatternsMustBindSameVariables of position

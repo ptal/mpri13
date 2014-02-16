@@ -11,6 +11,9 @@ exception UnboundTypeVariable of position * tname
 (** [UnboundClass] is raised if a class identifier is unbound. *)
 exception UnboundClass of position * tname
 
+(** [UnboundInstance] is raised if a instance identifier for a specific index doesn't exist. *)
+exception UnboundInstance of position * Types.class_predicate
+
 (** [UnboundLabel] is raised if a label is unbound. *)
 exception UnboundLabel of position * lname
 
@@ -20,6 +23,9 @@ exception MultipleLabels of position * lname
 
 (** [AlreadyDefinedClass] is raised if a class is defined twice. *)
 exception AlreadyDefinedClass of position * tname
+
+(** [AlreadyDefinedInstance] is raised if an instance doesn't exist *)
+exception AlreadyDefinedInstance of position * Types.class_predicate
 
 (** [InvalidTypeApplication] is raised if an incorrect number of
     types is applied to a polymorphic term. *)

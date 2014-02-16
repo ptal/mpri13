@@ -36,14 +36,19 @@ and block env = function
     let env = instance_definition env is in
     ([BInstanceDefinitions is], env)
 
-and instance_definition env idef = 
-  List.iter (check_wf_instance env) idef;
+and instance_definition env idefs = 
+  let env = List.fold_left check_wf_instance env idefs in
+  List.iter (check_typing_context_instance env) idefs;
   env
 
+and check_typing_context_instance env idef = ()
+
 and check_wf_instance env idef =
+  let env = bind_instance (ClassPredicate(idef.instance_class_name, idef.instance_index)) idef env in
   let cdef = lookup_class idef.instance_position idef.instance_class_name env in
   ignore (lookup_type_definition idef.instance_position idef.instance_index env);
-  check_wf_instance_members env idef cdef
+  check_wf_instance_members env idef cdef;
+  env
 
 and check_wf_instance_members env idef cdef =
   let env = introduce_type_parameters env idef.instance_parameters in

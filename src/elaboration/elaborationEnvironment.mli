@@ -52,6 +52,12 @@ val is_superclass : position -> tname -> tname -> t -> bool
 (** [bind_class c cdef e] associates a class_definition [cdef] to [c] in [e]. *)
 val bind_class : tname -> class_definition -> t -> t
 
+(** [lookup_instance pos i e] returns the instance_definition of [i] in [e]. *)
+val lookup_instance : position -> Types.class_predicate -> t -> instance_definition
+
+(** [bind_instance i idef e] associates a instance_definition [idef] to [i] in [e]. *)
+val bind_instance : Types.class_predicate -> instance_definition -> t -> t
+
 (** [bind_label pos l ts lty rtycon e] associates the type parameters [ts],
     the type [lty] and the record type constructor [rtycon] to the label [l]
     in [e]. *)

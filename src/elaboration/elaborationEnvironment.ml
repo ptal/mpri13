@@ -8,10 +8,11 @@ type t = {
   values       : (tnames * binding) list;
   types        : (tname * (Types.kind * type_definition)) list;
   classes      : (tname * class_definition) list;
+  instances    : (class_predicate * instance_definition) list;
   labels       : (lname * (tnames * Types.t * tname)) list;
 }
 
-let empty = { values = []; types = []; classes = []; labels = [] }
+let empty = { values = []; types = []; classes = []; instances = []; labels = [] }
 
 let values env = env.values
 
@@ -61,6 +62,19 @@ let rec is_superclass pos k1 k2 env =
   let superclasses = lookup_superclasses pos k2 env in
   List.mem k1 superclasses ||
   List.exists (fun k -> is_superclass pos k k1 env) superclasses
+
+let lookup_instance pos class_pred env =
+  try
+    List.assoc class_pred env.instances
+  with Not_found -> raise (UnboundInstance (pos, class_pred))
+
+let bind_instance class_pred inst env =
+  try
+    let pos = inst.instance_position in
+    ignore (lookup_instance pos class_pred env);
+    raise (AlreadyDefinedInstance (pos, class_pred))
+  with UnboundInstance _ -> 
+    { env with instances = (class_pred, inst) :: env.instances }
 
 let bind_type_variable t env =
   bind_type t KStar (TypeDef (undefined_position, KStar, t, DAlgebraic [])) env
