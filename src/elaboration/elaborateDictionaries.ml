@@ -29,8 +29,8 @@ and block env = function
     ([BDefinition d], env)
 
   | BClassDefinition c ->
-    let env = class_definition env c in
-    ([BClassDefinition c], env)
+    let ts, env = class_definition env c in
+    ([BTypeDefinitions ts], env)
 
   | BInstanceDefinitions is ->
     let env = instance_definition env is in
@@ -96,7 +96,28 @@ and check_wf_instance_members_name env idef cdef =
 and class_definition env cdef =
   check_wf_class env cdef;
   let env = bind_class cdef.class_name cdef env in
-  bind_class_members env cdef
+  let env = bind_class_members env cdef in
+  (TypeDefs (undefined_position, [elaborate_class env cdef]), env)
+
+(* TODO check the typename of class_name (if already taken...). *)
+and elaborate_class env cdef =
+  let upos = undefined_position in
+  let class_kind = KArrow(KStar, KStar) in
+  let superdicts = elaborate_superdicts env cdef in
+  let class_name_lower = TName ((fun (TName x) -> lowercase x) cdef.class_name) in
+  let class_dict = DRecordType ([cdef.class_parameter], superdicts @ cdef.class_members) in
+  TypeDef (upos, class_kind, class_name_lower, class_dict)
+
+(* TODO check the label superdict_name. *)
+and elaborate_superdicts env cdef =
+  let upos = undefined_position in
+  let elaborate_superdict (TName superclass_name) =
+    let superclass_name_lower = TName (lowercase superclass_name) in
+    let (TName class_name) = cdef.class_name in
+    let superdict_name = LName (lowercase (class_name ^ "_" ^ superclass_name)) in
+    (upos, superdict_name, 
+      Types.(TyApp(upos, superclass_name_lower, [TyVar (upos, cdef.class_parameter)]))) in
+  List.map elaborate_superdict cdef.superclasses
 
 and check_wf_class env cdef =
   check_superclasses env cdef
