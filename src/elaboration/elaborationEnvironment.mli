@@ -67,3 +67,12 @@ val bind_label : position -> lname -> tnames -> Types.t -> tname -> t -> t
     the record type constructor of the label [l] in [e]. *)
 val lookup_label : position -> lname -> t -> tnames * Types.t * tname
 
+(** [map_type2type type_name env] Map the type name to an unused type identifier. *)
+val map_type2type : tname -> t -> (tname * t)
+
+(** [lookup_type_name type_name env] Retreive the real identifier of the mapped type. *)
+val lookup_type_name : tname -> t -> tname
+
+val map_types2label : string -> tnames -> t -> (lname * t)
+
+val lookup_label_name : tnames -> t -> lname

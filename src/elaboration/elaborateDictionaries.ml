@@ -97,27 +97,27 @@ and class_definition env cdef =
   check_wf_class env cdef;
   let env = bind_class cdef.class_name cdef env in
   let env = bind_class_members env cdef in
-  (TypeDefs (undefined_position, [elaborate_class env cdef]), env)
+  let (typedef, env) = elaborate_class env cdef in
+  (TypeDefs (undefined_position, [typedef]), env)
 
-(* TODO check the typename of class_name (if already taken...). *)
 and elaborate_class env cdef =
   let upos = undefined_position in
   let class_kind = KArrow(KStar, KStar) in
-  let superdicts = elaborate_superdicts env cdef in
-  let class_name_lower = TName ((fun (TName x) -> lowercase x) cdef.class_name) in
+  let (superdicts, env) = elaborate_superdicts env cdef in
+  let (class_name, env) = map_type2type cdef.class_name env in
   let class_dict = DRecordType ([cdef.class_parameter], superdicts @ cdef.class_members) in
-  TypeDef (upos, class_kind, class_name_lower, class_dict)
+  (TypeDef (upos, class_kind, class_name, class_dict), env)
 
-(* TODO check the label superdict_name. *)
 and elaborate_superdicts env cdef =
   let upos = undefined_position in
-  let elaborate_superdict (TName superclass_name) =
-    let superclass_name_lower = TName (lowercase superclass_name) in
-    let (TName class_name) = cdef.class_name in
-    let superdict_name = LName (lowercase (class_name ^ "_" ^ superclass_name)) in
-    (upos, superdict_name, 
-      Types.(TyApp(upos, superclass_name_lower, [TyVar (upos, cdef.class_parameter)]))) in
-  List.map elaborate_superdict cdef.superclasses
+  let elaborate_superdict env superclass_name =
+    (* We create a new fresh label composed of class_name and superclass_name. *)
+    let (superdict_label, env) = map_types2label "dict" [superclass_name; cdef.class_name] env in
+    (* We retreive the mapped type name of the superclass. *)
+    let superclass_name = lookup_type_name superclass_name env in
+    let field_type = Types.(TyApp(upos, superclass_name, [TyVar (upos, cdef.class_parameter)])) in
+    ((upos, superdict_label, field_type), env) in
+  Misc.list_foldmap elaborate_superdict env cdef.superclasses
 
 and check_wf_class env cdef =
   check_superclasses env cdef
