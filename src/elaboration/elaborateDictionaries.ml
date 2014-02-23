@@ -31,8 +31,8 @@ and block env = function
     ([BDefinition d], env)
 
   | BClassDefinition c ->
-    let ts, env = class_definition env c in
-    ([BTypeDefinitions ts], env)
+    let ts, cmembers, env = class_definition env c in
+    ((BTypeDefinitions ts) :: cmembers, env)
 
   | BInstanceDefinitions is ->
     let env = instance_definition env is in
@@ -105,7 +105,8 @@ and class_definition env cdef =
   let env = bind_class cdef.class_name cdef env in
   let env = bind_class_members env cdef in
   let (typedef, env) = elaborate_class env cdef in
-  (TypeDefs (undefined_position, [typedef]), env)
+  let (cmembers, env) = elaborate_let_of_class_members env typedef in
+  (TypeDefs (undefined_position, [typedef]), cmembers, env)
 
 and elaborate_class env cdef =
   let upos = undefined_position in
@@ -146,9 +147,35 @@ and bind_superdict_label env pos superdict_label class_parameter field_type clas
   | UnboundLabel _ ->
     bind_label pos superdict_label [class_parameter] field_type class_name env
   end
-(* 
-and elaborate_let_of_class_members env (TypeDef (_, ckind, cname, cdict) =
- *)
+
+and elaborate_let_of_class_members env = function
+  | TypeDef (_, _, dict_tname, dict_type) ->
+    begin match dict_type with
+    | DRecordType(tparams, members) ->
+      let upos = undefined_position in
+      let elaborate_let_of_class_member env (_, ((LName member_name) as lmember), member_type) =
+        let local_dict_name = Name "dict" in
+        let dict_lambda_type = TyApp(upos, dict_tname, [TyVar(upos, (List.hd tparams))]) in
+        let dict_arg = (local_dict_name, dict_lambda_type) in
+        let dict_lambda_body = ERecordAccess(upos, EVar(upos, local_dict_name, []), lmember) in
+        let dict_lambda = ELambda(upos, dict_arg, dict_lambda_body) in
+        let dict_access_binding = ((Name member_name), member_type) in
+        let dict_access = ValueDef(upos, tparams, [], dict_access_binding, dict_lambda) in
+        let env = bind_dict_access_value env upos tparams dict_access_binding in
+        (BDefinition(BindValue(upos, [dict_access])), env) in
+      Misc.list_foldmap elaborate_let_of_class_member env members
+    | _ -> failwith "Elaboration of class members stored in a record only."
+    end
+  | _ -> failwith "Cannot elaborate external type."
+
+and bind_dict_access_value env pos tparams (member_name, member_type) =
+  begin try
+    ignore (lookup pos member_name env);
+    raise (CannotUseValueRestrictedName(pos, member_name))
+  with
+  | UnboundIdentifier _ ->
+    bind_scheme member_name tparams member_type env
+  end
 
 and check_wf_class env cdef =
   check_superclasses env cdef

@@ -144,3 +144,7 @@ exception CannotUseTypeRestrictedName of position * tname
 (** [CannotUseLabelRestrictedName] is raised when the elaboration produces a label symbol already
     used by the program. *)
 exception CannotUseLabelRestrictedName of position * lname
+
+(** [CannotUseValueRestrictedName] is raised when the elaboration produces an identifier symbol already
+    used by the program. *)
+exception CannotUseValueRestrictedName of position * name

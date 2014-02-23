@@ -171,3 +171,8 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Elaboration produced the label `%s' but it's already used by the program. Solution: rename it."
                    name)
+
+    | CannotUseValueRestrictedName (pos, Name name) ->
+      fatal' pos (Printf.sprintf
+                   "  Elaboration produced the identifier `%s' but it's already used by the program. Solution: rename it."
+                   name)

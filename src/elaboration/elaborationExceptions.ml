@@ -39,3 +39,4 @@ exception InstanceTypingContextCannotBeRelated of position * tname * tname * tna
 exception InstanceTypingContextCannotBeEqual of position * tname * tname
 exception CannotUseTypeRestrictedName of position * tname
 exception CannotUseLabelRestrictedName of position * lname
+exception CannotUseValueRestrictedName of position * name
