@@ -156,3 +156,8 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  In instance declaration `%s', relation in the typing context is forbidden (`%s' is a superclass of `%s')."
                    idef_name superclass1 superclass2)
+
+    | InstanceTypingContextCannotBeEqual (pos, TName idef_name, TName class_name) ->
+      fatal' pos (Printf.sprintf
+                   "  In instance declaration `%s', `%s' is used twice in the typing context."
+                   idef_name class_name)

@@ -45,9 +45,14 @@ and check_wf_typing_context_instance env idef =
     let check_is_superclass c1 c2 =
       if (is_superclass pos c1 c2 env) then
         raise (InstanceTypingContextCannotBeRelated(pos, idef.instance_class_name, c1, c2)) in
-    let check_both_context (ClassPredicate(name1, _), ClassPredicate(name2, _)) =
-      check_is_superclass name1 name2;
-      check_is_superclass name2 name1 in
+    let check_is_identical c1 c2 =
+      if (c1 = c2) then
+        raise (InstanceTypingContextCannotBeEqual(pos, idef.instance_class_name, c1)) in
+    let check_both_context (ClassPredicate(name1, idx1), ClassPredicate(name2, idx2)) =
+      if (idx1 = idx2) then
+        check_is_superclass name1 name2;
+        check_is_superclass name2 name1;
+        check_is_identical name1 name2 in
     iter_all_pairs2 check_both_context idef.instance_typing_context in
 
   let check_typing_context_existence () =

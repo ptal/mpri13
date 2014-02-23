@@ -130,5 +130,9 @@ exception MissingInstanceMember of position * tname * lname
 exception AlreadyDefinedInstanceMember of position * lname
 
 (** [InstanceTypingContextCannotBeRelated] is raised when two types in the typing context
-    are related (e.g. Ki < Kj). *)
+    are related (e.g. Ki < Kj) with the same indice symbol. *)
 exception InstanceTypingContextCannotBeRelated of position * tname * tname * tname
+
+(** [InstanceTypingContextCannotBeEqual] is raised when two types in the typing context
+    are equal (e.g. Ki = Kj) with the same indice symbol. *)
+exception InstanceTypingContextCannotBeEqual of position * tname * tname
