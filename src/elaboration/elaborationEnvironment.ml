@@ -10,13 +10,10 @@ type t = {
   classes      : (tname * class_definition) list;
   instances    : (class_predicate * instance_definition) list;
   labels       : (lname * (tnames * Types.t * tname)) list;
-  type2type_mapping : (tname * tname) list;
-  types2label_mapping : (tnames * lname) list;
 }
 
 let empty = { values = []; types = []; classes = []; 
-  instances = []; labels = []; type2type_mapping = [];
-  types2label_mapping = []; }
+  instances = []; labels = []; }
 
 let values env = env.values
 
@@ -95,41 +92,6 @@ let bind_label pos l ts ty rtcon env =
     raise (LabelAlreadyTaken (pos, l))
   with UnboundLabel _ ->
     { env with labels = (l, (ts, ty, rtcon)) :: env.labels }
-
-let () = Random.self_init ()
-let random_name_sequence () = string_of_int @@ Random.int 100000000
-let make_unique_type_name (TName type_name) =
-  TName (String.lowercase type_name ^ "_class_" ^ (random_name_sequence ()))
-
-let make_unique_label_name label_name =
-  LName (String.lowercase label_name ^ "_label_" ^ (random_name_sequence ()))
-
-let map_type2type type_name env =
-  let rec bind_name () =
-    let unique_type_name = make_unique_type_name type_name in
-    if(List.mem_assoc unique_type_name env.types) then
-      bind_name ()
-    else
-      ( unique_type_name, 
-        { env with type2type_mapping = (type_name, unique_type_name) :: env.type2type_mapping }) in
-  bind_name ()
-
-let lookup_type_name type_name env =
-  List.assoc type_name env.type2type_mapping
-
-let map_types2label prefix types env =
-  let label_name = prefix ^ List.fold_left (fun n (TName x) -> n ^ "_" ^ x) "" types in
-  let rec bind_label () =
-    let unique_label_name = make_unique_label_name label_name in
-    if(List.mem_assoc unique_label_name env.labels) then
-      bind_label ()
-    else
-      ( unique_label_name, 
-        { env with types2label_mapping = (types, unique_label_name) :: env.types2label_mapping}) in
-  bind_label ()
-
-let lookup_label_name types env =
-  List.assoc types env.types2label_mapping
 
 let initial =
   let primitive_type t k = TypeDef (undefined_position, k, t, DAlgebraic []) in

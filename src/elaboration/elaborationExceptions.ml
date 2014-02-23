@@ -37,3 +37,5 @@ exception MissingInstanceMember of position * tname * lname
 exception AlreadyDefinedInstanceMember of position * lname
 exception InstanceTypingContextCannotBeRelated of position * tname * tname * tname
 exception InstanceTypingContextCannotBeEqual of position * tname * tname
+exception CannotUseTypeRestrictedName of position * tname
+exception CannotUseLabelRestrictedName of position * lname

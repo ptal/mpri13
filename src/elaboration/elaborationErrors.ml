@@ -161,3 +161,13 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  In instance declaration `%s', `%s' is used twice in the typing context."
                    idef_name class_name)
+
+    | CannotUseTypeRestrictedName (pos, TName name) ->
+      fatal' pos (Printf.sprintf
+                   "  Elaboration produced the type `%s' but it's already used by the program. Solution: rename it."
+                   name)
+
+    | CannotUseLabelRestrictedName (pos, LName name) ->
+      fatal' pos (Printf.sprintf
+                   "  Elaboration produced the label `%s' but it's already used by the program. Solution: rename it."
+                   name)

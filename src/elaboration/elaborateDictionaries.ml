@@ -15,6 +15,8 @@ let rec iter_all_pairs2 f = function
   | [] -> ()
   | hd::tl -> (iter_all_pairs f hd tl); (iter_all_pairs2 f tl)
 
+let lower_tname (TName x) = TName (lowercase x)
+
 let rec program p = handle_error List.(fun () ->
   flatten (fst (Misc.list_foldmap block ElaborationEnvironment.initial p))
 )
@@ -108,21 +110,45 @@ and class_definition env cdef =
 and elaborate_class env cdef =
   let upos = undefined_position in
   let class_kind = KArrow(KStar, KStar) in
-  let (superdicts, env) = elaborate_superdicts env cdef in
-  let (class_name, env) = map_type2type cdef.class_name env in
+  let class_name = lower_tname cdef.class_name in
+  let (superdicts, env) = elaborate_superdicts env cdef class_name in
   let class_dict = DRecordType ([cdef.class_parameter], superdicts @ cdef.class_members) in
-  (TypeDef (upos, class_kind, class_name, class_dict), env)
+  let elaborated_class_type = TypeDef (upos, class_kind, class_name, class_dict) in
+  let env = bind_elaborated_class env cdef.class_position class_name class_kind elaborated_class_type in
+  (elaborated_class_type, env)
 
-and elaborate_superdicts env cdef =
+and bind_elaborated_class env pos class_name class_kind class_type =
+  begin try
+    ignore (lookup_type_kind pos class_name env);
+    raise (CannotUseTypeRestrictedName(pos, class_name))
+  with
+  | UnboundTypeVariable _ -> 
+    bind_type class_name class_kind class_type env
+  end
+
+and elaborate_superdicts env cdef class_name =
   let upos = undefined_position in
+  let make_superdict_label (TName superclass_name) (TName class_name) =
+    LName (lowercase (superclass_name ^ "_" ^ class_name)) in
   let elaborate_superdict env superclass_name =
-    (* We create a new fresh label composed of class_name and superclass_name. *)
-    let (superdict_label, env) = map_types2label "dict" [superclass_name; cdef.class_name] env in
-    (* We retreive the mapped type name of the superclass. *)
-    let superclass_name = lookup_type_name superclass_name env in
+    let superdict_label = make_superdict_label superclass_name cdef.class_name in
+    let superclass_name = lower_tname superclass_name in
     let field_type = Types.(TyApp(upos, superclass_name, [TyVar (upos, cdef.class_parameter)])) in
+    let env = bind_superdict_label env cdef.class_position superdict_label cdef.class_parameter field_type class_name in
     ((upos, superdict_label, field_type), env) in
   Misc.list_foldmap elaborate_superdict env cdef.superclasses
+
+and bind_superdict_label env pos superdict_label class_parameter field_type class_name =
+  begin try
+    ignore (lookup_label pos superdict_label env);
+    raise (CannotUseLabelRestrictedName(pos, superdict_label))
+  with
+  | UnboundLabel _ ->
+    bind_label pos superdict_label [class_parameter] field_type class_name env
+  end
+(* 
+and elaborate_let_of_class_members env (TypeDef (_, ckind, cname, cdict) =
+ *)
 
 and check_wf_class env cdef =
   check_superclasses env cdef

@@ -136,3 +136,11 @@ exception InstanceTypingContextCannotBeRelated of position * tname * tname * tna
 (** [InstanceTypingContextCannotBeEqual] is raised when two types in the typing context
     are equal (e.g. Ki = Kj) with the same indice symbol. *)
 exception InstanceTypingContextCannotBeEqual of position * tname * tname
+
+(** [CannotUseTypeRestrictedName] is raised when the elaboration produces a type symbol already
+    used by the program. *)
+exception CannotUseTypeRestrictedName of position * tname
+
+(** [CannotUseLabelRestrictedName] is raised when the elaboration produces a label symbol already
+    used by the program. *)
+exception CannotUseLabelRestrictedName of position * lname
