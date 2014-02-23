@@ -103,7 +103,6 @@ and check_wf_instance_members_name env idef cdef =
 and class_definition env cdef =
   check_wf_class env cdef;
   let env = bind_class cdef.class_name cdef env in
-  let env = bind_class_members env cdef in
   let (typedef, env) = elaborate_class env cdef in
   let (cmembers, env) = elaborate_let_of_class_members env typedef in
   (TypeDefs (undefined_position, [typedef]), cmembers, env)
@@ -179,18 +178,6 @@ and bind_dict_access_value env pos tparams (member_name, member_type) =
 
 and check_wf_class env cdef =
   check_superclasses env cdef
-
-and bind_class_members env cdef =
-  let bind_member env (pos, LName name, mtype) = 
-    try
-      let (_, (x, _)) = lookup pos (Name name) env in
-      raise (OverloadedSymbolCannotBeBound(pos, x))
-    with
-    | UnboundIdentifier(_, _) ->
-      let class_param = [cdef.class_parameter] in
-      check_wf_scheme env class_param mtype;
-      bind_scheme (Name name) class_param mtype env in
-  List.fold_left bind_member env cdef.class_members
 
 and check_superclasses env cdef =
   let check_is_superclass c1 c2 =
