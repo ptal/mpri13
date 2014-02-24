@@ -17,6 +17,8 @@ let rec iter_all_pairs2 f = function
 
 let lower_tname (TName x) = TName (lowercase x)
 
+let name_of_tname (TName x) = Name x
+
 let rec program p = handle_error List.(fun () ->
   flatten (fst (Misc.list_foldmap block ElaborationEnvironment.initial p))
 )
@@ -35,11 +37,39 @@ and block env = function
     ((BTypeDefinitions ts) :: cmembers, env)
 
   | BInstanceDefinitions is ->
-    let env = instance_definition env is in
-    ([BInstanceDefinitions is], env)
+    let instances, env = instance_definition env is in
+    ([instances], env)
 
 and instance_definition env idefs = 
-  List.fold_left check_wf_instance env idefs
+  let env = List.fold_left check_wf_instance env idefs in
+  let (instances, env) = Misc.list_foldmap elaborate_instance env idefs in
+  (BDefinition(BindValue(undefined_position, instances)), env)
+
+and make_superdict_label (TName superclass_name) (TName class_name) =
+  LName (lowercase (superclass_name ^ "_" ^ class_name))
+
+and elaborate_instance env idef =
+  let upos = undefined_position in
+  let tparams = idef.instance_parameters in
+  let class_name = lower_tname idef.instance_class_name in
+  let make_builder_name (TName instance_class_name) (TName idx) =
+    Name (lowercase (instance_class_name ^ "_" ^ idx)) in
+  let builder_name = make_builder_name idef.instance_class_name idef.instance_index in
+  let builder_type = TyApp(upos, class_name, [TyVar(upos, idef.instance_index)]) in
+  let builder_binding = (builder_name, builder_type) in
+  let cdef = lookup_class upos idef.instance_class_name env in
+  let instanciate_super_dict superclass_name = 
+    let dict_label_name = make_superdict_label superclass_name class_name in
+    let super_instance_name = make_builder_name superclass_name idef.instance_index in
+    RecordBinding(dict_label_name, EVar(upos, super_instance_name, [])) in (* TODO proper instance call. *)
+  let super_dict_members = List.map instanciate_super_dict cdef.superclasses in
+  let builder_body = ERecordCon(upos, (name_of_tname class_name), [TyVar(upos, idef.instance_index)], super_dict_members @ idef.instance_members) in
+  let make_builder_args body (ClassPredicate(((TName name) as cname), ((TName idx_name) as idx))) =
+    let arg_name = Name ("dict_" ^ name ^ "_" ^ idx_name) in
+    let arg_type = TyApp(upos, (lower_tname cname), [TyVar(upos, idx)]) in
+    ELambda(upos, (arg_name, arg_type), body) in
+  let builder_args = List.fold_left make_builder_args builder_body idef.instance_typing_context in
+  (ValueDef(upos, tparams, [], builder_binding, builder_args), env)
 
 and check_wf_typing_context_instance env idef =
   let pos = idef.instance_position in
@@ -72,7 +102,9 @@ and check_wf_instance env idef =
   check_wf_typing_context_instance env idef;
   let env = bind_instance (ClassPredicate(idef.instance_class_name, idef.instance_index)) idef env in
   let cdef = lookup_class idef.instance_position idef.instance_class_name env in
-  ignore (lookup_type_definition idef.instance_position idef.instance_index env);
+  let tindex = lookup_type_definition idef.instance_position idef.instance_index env in
+  (* TODO must be of kind  (KArrow(KStar, KStar)) *)
+  ignore (type_definition env tindex);
   check_wf_instance_members env idef cdef;
   env
 
@@ -128,8 +160,6 @@ and bind_elaborated_class env pos class_name class_kind class_type =
 
 and elaborate_superdicts env cdef class_name =
   let upos = undefined_position in
-  let make_superdict_label (TName superclass_name) (TName class_name) =
-    LName (lowercase (superclass_name ^ "_" ^ class_name)) in
   let elaborate_superdict env superclass_name =
     let superdict_label = make_superdict_label superclass_name cdef.class_name in
     let superclass_name = lower_tname superclass_name in
@@ -158,7 +188,7 @@ and elaborate_let_of_class_members env = function
         let dict_arg = (local_dict_name, dict_lambda_type) in
         let dict_lambda_body = ERecordAccess(upos, EVar(upos, local_dict_name, []), lmember) in
         let dict_lambda = ELambda(upos, dict_arg, dict_lambda_body) in
-        let dict_access_binding = ((Name member_name), member_type) in
+        let dict_access_binding = ((Name member_name), TyApp(upos, TName "->", [dict_lambda_type; member_type])) in
         let dict_access = ValueDef(upos, tparams, [], dict_access_binding, dict_lambda) in
         let env = bind_dict_access_value env upos tparams dict_access_binding in
         (BDefinition(BindValue(upos, [dict_access])), env) in
@@ -262,7 +292,7 @@ and env_of_bindings env cdefs = List.(
   ) cdefs
 )
 
-and check_equal_types pos ty1 ty2 =
+and check_equal_types pos ty1 ty2 = ()
   if not (equivalent ty1 ty2) then
     raise (IncompatibleTypes (pos, ty1, ty2))
 
