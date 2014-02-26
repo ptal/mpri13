@@ -40,27 +40,32 @@ and block env = function
     let instances, env = instance_definition env is in
     ([instances], env)
 
+(* Functions creating new symbols during elaboration. *)
+and make_superdict_label (TName superclass_name) (TName class_name) =
+  LName (lowercase (superclass_name ^ "_" ^ class_name))
+
+and make_class_name class_name = lower_tname class_name
+
+and make_dict_instance_name (TName class_name) (TName idx) =
+  Name (lowercase (class_name ^ "_" ^ idx))
+
+(* Instance *)
+
 and instance_definition env idefs = 
   let env = List.fold_left check_wf_instance env idefs in
   let (instances, env) = Misc.list_foldmap elaborate_instance env idefs in
   (BDefinition(BindValue(undefined_position, instances)), env)
 
-and make_superdict_label (TName superclass_name) (TName class_name) =
-  LName (lowercase (superclass_name ^ "_" ^ class_name))
-
 and elaborate_instance env idef =
   let upos = undefined_position in
-  let tparams = idef.instance_parameters in
-  let class_name = lower_tname idef.instance_class_name in
-  let make_builder_name (TName instance_class_name) (TName idx) =
-    Name (lowercase (instance_class_name ^ "_" ^ idx)) in
-  let builder_name = make_builder_name idef.instance_class_name idef.instance_index in
-  let builder_type = TyApp(upos, class_name, [TyVar(upos, idef.instance_index)]) in
-  let builder_binding = (builder_name, builder_type) in
+  let class_name = make_class_name idef.instance_class_name in
+  let instance_name = make_dict_instance_name idef.instance_class_name idef.instance_index in
+  let instance_type = TyApp(upos, class_name, [TyVar(upos, idef.instance_index)]) in
+  let instance_binding = (instance_name, instance_type) in
   let cdef = lookup_class upos idef.instance_class_name env in
   let instanciate_super_dict superclass_name = 
     let dict_label_name = make_superdict_label superclass_name class_name in
-    let super_instance_name = make_builder_name superclass_name idef.instance_index in
+    let super_instance_name = make_dict_instance_name superclass_name idef.instance_index in
     RecordBinding(dict_label_name, EVar(upos, super_instance_name, [])) in (* TODO proper instance call. *)
   let super_dict_members = List.map instanciate_super_dict cdef.superclasses in
   let builder_body = ERecordCon(upos, (name_of_tname class_name), [TyVar(upos, idef.instance_index)], super_dict_members @ idef.instance_members) in
@@ -69,7 +74,7 @@ and elaborate_instance env idef =
     let arg_type = TyApp(upos, (lower_tname cname), [TyVar(upos, idx)]) in
     ELambda(upos, (arg_name, arg_type), body) in
   let builder_args = List.fold_left make_builder_args builder_body idef.instance_typing_context in
-  (ValueDef(upos, tparams, [], builder_binding, builder_args), env)
+  (ValueDef(upos, idef.instance_parameters, [], instance_binding, builder_args), env)
 
 and check_wf_typing_context_instance env idef =
   let pos = idef.instance_position in
