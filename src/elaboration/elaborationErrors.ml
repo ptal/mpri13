@@ -176,3 +176,13 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Elaboration produced the identifier `%s' but it's already used by the program. Solution: rename it."
                    name)
+
+    | UndeclaredInstance(pos, TName class_name, TName idx) ->
+      fatal' pos (Printf.sprintf
+                   "  An instance of the class `%s' for type `%s' can't be found."
+                   class_name idx)
+
+    | InaccessibleDictionaryInTypingContext(pos, TName class_name, TName instance_name, TName idx) ->
+      fatal' pos (Printf.sprintf
+                   "  Class `%s' is inaccessible from the instance typing context of class `%s' for type `%s'."
+                   class_name instance_name idx)

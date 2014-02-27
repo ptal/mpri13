@@ -148,3 +148,11 @@ exception CannotUseLabelRestrictedName of position * lname
 (** [CannotUseValueRestrictedName] is raised when the elaboration produces an identifier symbol already
     used by the program. *)
 exception CannotUseValueRestrictedName of position * name
+
+(** [UndeclaredInstance] is raised when an instance of class T with index I is needed but not declared in
+    the program. *)
+exception UndeclaredInstance of position * tname * tname
+
+(** [InaccessibleDictionaryInTypingContext] is raised when a dictionary needed is not in the typing context
+    of the instance under elaboration. *)
+exception InaccessibleDictionaryInTypingContext of position * tname * tname * tname

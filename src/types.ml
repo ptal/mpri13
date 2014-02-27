@@ -15,8 +15,11 @@ and class_predicate = ClassPredicate of tname * tname
 
 and class_predicates = class_predicate list
 
+let tarrow pos ty =
+  TyApp (pos, TName "->", ty)
+
 let tyarrow pos ity oty =
-  TyApp (pos, TName "->", [ity; oty])
+  tarrow pos [ity; oty]
 
 let ntyarrow pos itys oty =
   List.fold_left (fun oty ity -> tyarrow pos ity oty) oty (List.rev itys)
