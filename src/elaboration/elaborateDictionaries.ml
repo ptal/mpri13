@@ -57,12 +57,12 @@ and make_class_name class_name = lower_tname class_name
 and make_dict_instance_name (TName class_name) (TName idx) =
   Name (lowercase (class_name ^ "_" ^ idx))
 
-and make_dict_arg_name class_name idx =
+and make_dict_param_name class_name idx =
   let (Name instance_name) = make_dict_instance_name class_name idx in
   Name ("dict_" ^ instance_name)
 
-and make_dict_arg_name_from_pred (ClassPredicate(class_name, idx)) =
-  make_dict_arg_name class_name idx
+and make_dict_param_name_from_pred (ClassPredicate(class_name, idx)) =
+  make_dict_param_name class_name idx
 
 (* Instance *)
 
@@ -70,32 +70,6 @@ and instance_definition env idefs =
   let env = List.fold_left check_wf_instance env idefs in
   let (instances, env) = Misc.list_foldmap elaborate_instance env idefs in
   (BDefinition(BindValue(undefined_position, instances)), env)
-
-and make_instance_type class_name idx =
-  TyApp(upos, class_name, [TyVar(upos, idx)]) 
-
-and instance_type_from_class_pred (ClassPredicate(class_name, idx)) = 
-  make_instance_type (make_class_name class_name) idx
-
-and type_from_typing_context typing_context =
-  List.map instance_type_from_class_pred typing_context
-
-(* Name and type an dictionary instance function. *)
-and make_instance_binding idef class_name =
-  let instance_name = make_dict_instance_name idef.instance_class_name idef.instance_index in
-  let result_type = make_instance_type class_name idef.instance_index in
-  let args_types = type_from_typing_context idef.instance_typing_context in
-  let instance_type = ntyarrow upos args_types result_type in
-  (instance_name, instance_type)
-
-(* From a typing context, returns the curryfication of the arguments of 
-   f(t1,..,tn) = body with t1..tn being the typing context. *)
-and currify_typing_context typing_context body =
-  let make_lambda body arg_type class_pred =
-    let arg_name = make_dict_arg_name_from_pred class_pred in
-    ELambda(upos, (arg_name, arg_type), body) in
-  let args_types = type_from_typing_context typing_context in
-  List.fold_left2 make_lambda body args_types typing_context
 
 and lookup_dict_instance env pos class_name idx =
   let instance_name = make_dict_instance_name class_name idx in
@@ -109,8 +83,8 @@ and extract_dict_name_from_type ty =
   | TyApp (_, t, [TyVar _]) -> t
   | _ -> Errors.fatal [] "Dictionary with a different type from K 'a."
 
-and find_dict_accessor env dict_name (ClassPredicate(class_name, idx)) =
-  Printf.printf "search %s in (%s, %s).\n" ((fun (TName x) -> x) dict_name) ((fun (TName x) -> x) class_name) ((fun (TName x) -> x) idx);
+(* Build a dictionary "dict_name" from a class predicate currently in scope. *)
+and build_dict_from_pred_param env dict_name (ClassPredicate(class_name, idx)) =
   let rec make_accessor accessor class_name =
     if dict_name = (make_class_name class_name) then
       accessor
@@ -121,57 +95,96 @@ and find_dict_accessor env dict_name (ClassPredicate(class_name, idx)) =
     | [] -> raise Not_found
     | superclass :: tl ->
       try
-        let superdict_proj = EVar(upos, make_superdict_proj_name superclass base_class, []) in
+        (* We project a super-dictionary so the type parameter must be the same as the sub-dictionary. *)
+        let superdict_proj = EVar(upos, make_superdict_proj_name superclass base_class, instantiate [idx]) in
         let accessor = EApp(upos, superdict_proj, accessor) in
         make_accessor accessor superclass
       with
       | Not_found -> make_superclass_access base_class accessor tl in
-  let dict_arg_name = make_dict_arg_name class_name idx in
-  let dict_var = EVar(upos, dict_arg_name, []) in
+  let dict_arg_name = make_dict_param_name class_name idx in
+  let dict_var = EVar(upos, dict_arg_name, instantiate [idx]) in
   make_accessor dict_var class_name
 
-and find_dict_in_typing_context env dict_type typing_context =
+and build_dict_from_typing_context env dict_type typing_context =
   let dict_name = extract_dict_name_from_type dict_type in
   let rec aux = function
   | [] -> raise Not_found
   | hd :: tl ->
     try
-      find_dict_accessor env dict_name hd
+      build_dict_from_pred_param env dict_name hd
     with
     | Not_found -> aux tl in
   aux typing_context
 
+and instantiate tparams =
+  List.map (fun x -> TyVar(upos, x)) tparams
+
 and elaborate_instance_superdicts env idef class_name =
   let idx = idef.instance_index in
   let pos = idef.instance_position in
-  (* For each superclass of the instance under elaboration, we assign the corresponding dictionary
-     in the instance record. *)
+  (* For each superclass of the instance under elaboration, we set the corresponding dictionary
+     in the record field. *)
   let elaborate_superdict superdict_name =
-    let superdict_instance = lookup_dict_instance env pos superdict_name idx in
-    let (_, (instance_name, instance_type)) = superdict_instance in
-    let (args_types, _) = destruct_ntyarrow instance_type in
+    let (tparams, (instance_name, instance_type)) = lookup_dict_instance env pos superdict_name idx in
+    let (params_type, _) = destruct_ntyarrow instance_type in
+    (* We map the super dictionary type parameters with the one from the instance (it's a one-to-one mapping because the
+       type parameters are ordered and the type parameters of the instance result type are the same because it's a super-dictionary.
+       This is checked in parser.mly. *)
+    let params_type = List.map (fun x -> substitute (List.combine tparams (List.map (fun x -> TyVar(upos, x)) idef.instance_parameters)) x) params_type in
     try
-      let rec apply expr = function
+      (* Apply each argument to the super-dictionary. *)
+      (* TODO: add type application to the superdict function. *)
+      let rec apply_arg expr = function
       | [] -> expr
-      | hd :: tl ->
-        let dict_accessor = find_dict_in_typing_context env hd idef.instance_typing_context in
-        apply (EApp(upos, expr, dict_accessor)) tl in
-      let dict_accessor = apply (EVar(upos, make_dict_instance_name superdict_name idx, [])) args_types in
-      let dict_label_name = make_superdict_label superdict_name class_name in
-      RecordBinding(dict_label_name, dict_accessor)
+      | parameter :: tl ->
+        let arg = build_dict_from_typing_context env parameter idef.instance_typing_context in
+        apply_arg (EApp(upos, expr, arg)) tl in
+      (* one-to-one mapping so we can directly pass the instance_parameters. *)
+      let superdict = apply_arg (EVar(upos, make_dict_instance_name superdict_name idx, (instantiate idef.instance_parameters))) params_type in
+      let superdict_label = make_superdict_label superdict_name class_name in
+      RecordBinding(superdict_label, superdict)
     with
     | Not_found -> raise (InaccessibleDictionaryInTypingContext(pos, superdict_name, idef.instance_class_name, idef.instance_index)) in
   let cdef = lookup_class upos idef.instance_class_name env in
   List.map elaborate_superdict cdef.superclasses
 
+(* From a typing context, returns the currying of the arguments of 
+   f(t1,..,tn) = body with t1..tn being the typing context. *)
+and currying_typing_context typing_context body =
+  let make_lambda body arg_type class_pred =
+    let arg_name = make_dict_param_name_from_pred class_pred in
+    ELambda(upos, (arg_name, arg_type), body) in
+  let args_types = type_from_typing_context typing_context in
+  List.fold_left2 make_lambda body args_types typing_context
+
+and make_instance_type tparams class_name idx =
+  let idx_type = match tparams with
+  | [] -> TyVar(upos, idx)
+  | p -> TyApp(upos, idx, instantiate p) in
+  TyApp(upos, class_name, [idx_type]) 
+
+and instance_type_from_class_pred (ClassPredicate(class_name, idx)) = 
+  make_instance_type [] (make_class_name class_name) idx
+
+and type_from_typing_context typing_context =
+  List.map instance_type_from_class_pred typing_context
+
+(* Name and type a dictionary instance function. *)
+and make_instance_binding idef class_name =
+  let instance_name = make_dict_instance_name idef.instance_class_name idef.instance_index in
+  let result_type = make_instance_type idef.instance_parameters class_name idef.instance_index in
+  let params_type = type_from_typing_context idef.instance_typing_context in
+  let instance_type = ntyarrow upos params_type result_type in
+  (instance_name, instance_type)
+
 and elaborate_instance env idef =
   let class_name = make_class_name idef.instance_class_name in
   let instance_binding = make_instance_binding idef class_name in
   let super_dict_members = elaborate_instance_superdicts env idef class_name in
-  let builder_body = ERecordCon(upos, (name_of_tname class_name), [TyVar(upos, idef.instance_index)], super_dict_members @ idef.instance_members) in
-  let curryfied_instance = currify_typing_context idef.instance_typing_context builder_body in
+  let builder_body = ERecordCon(upos, (name_of_tname class_name), [TyApp(upos, idef.instance_index, instantiate idef.instance_parameters)], super_dict_members @ idef.instance_members) in
+  let currying_instance = currying_typing_context idef.instance_typing_context builder_body in
   let env = bind_scheme (fst instance_binding) idef.instance_parameters (snd instance_binding) env in
-  (ValueDef(upos, idef.instance_parameters, [], instance_binding, curryfied_instance), env)
+  (ValueDef(upos, idef.instance_parameters, [], instance_binding, currying_instance), env)
 
 and check_wf_typing_context_instance env idef =
   let pos = idef.instance_position in
@@ -202,6 +215,9 @@ and check_wf_typing_context_instance env idef =
   check_typing_context_existence ();
   check_typing_context_relation ()
 
+(* TODO: Check that all variables used in the typing context are also used in the "result type".
+   Issue a warning if a variable is not used anywhere.
+   Issue an error if a variable is only used in the typing context. *)
 and check_wf_instance env idef =
   check_wf_typing_context_instance env idef;
   let env = bind_instance (ClassPredicate(idef.instance_class_name, idef.instance_index)) idef env in
@@ -288,9 +304,9 @@ and elaborate_let_of_class_members env = function
       let upos = undefined_position in
       let elaborate_let_of_class_member env (_, ((LName member_name) as lmember), member_type) =
         let local_dict_name = Name "dict" in
-        let dict_lambda_type = TyApp(upos, dict_tname, [TyVar(upos, (List.hd tparams))]) in
+        let dict_lambda_type = TyApp(upos, dict_tname, instantiate tparams) in
         let dict_arg = (local_dict_name, dict_lambda_type) in
-        let dict_lambda_body = ERecordAccess(upos, EVar(upos, local_dict_name, []), lmember) in
+        let dict_lambda_body = ERecordAccess(upos, EVar(upos, local_dict_name, instantiate tparams), lmember) in
         let dict_lambda = ELambda(upos, dict_arg, dict_lambda_body) in
         let dict_access_binding = ((Name member_name), TyApp(upos, TName "->", [dict_lambda_type; member_type])) in
         let dict_access = ValueDef(upos, tparams, [], dict_access_binding, dict_lambda) in
@@ -396,11 +412,11 @@ and env_of_bindings env cdefs = List.(
   ) cdefs
 )
 
-(* TODO: uncomment. *)
+(* TODO: uncomment after the term elaboration. *)
 and check_equal_types pos ty1 ty2 = ()
-(*   if not (equivalen tty1 ty2) then
-    raise (IncompatibleTypes (pos, ty1, ty2)) *)
-
+(*   if not (equivalent ty1 ty2) then
+    raise (IncompatibleTypes (pos, ty1, ty2))
+ *)
 and type_application pos env x tys =
   List.iter (check_wf_type env KStar) tys;
   let (ts, (_, ty)) = lookup pos x env in
