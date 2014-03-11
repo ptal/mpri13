@@ -186,3 +186,8 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Class `%s' is inaccessible from the instance typing context of class `%s' for type `%s'."
                    class_name instance_name idx)
+
+    | ClassPredicateInValueForbidden(pos, Name value_name) ->
+      fatal' pos (Printf.sprintf
+                   "  Use of type classes in value `%s' is forbidden."
+                   value_name)

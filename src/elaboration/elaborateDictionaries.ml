@@ -133,7 +133,6 @@ and elaborate_instance_superdicts env idef class_name =
     let params_type = List.map (fun x -> substitute (List.combine tparams (List.map (fun x -> TyVar(upos, x)) idef.instance_parameters)) x) params_type in
     try
       (* Apply each argument to the super-dictionary. *)
-      (* TODO: add type application to the superdict function. *)
       let rec apply_arg expr = function
       | [] -> expr
       | parameter :: tl ->
@@ -150,6 +149,8 @@ and elaborate_instance_superdicts env idef class_name =
 
 (* From a typing context, returns the currying of the arguments of 
    f(t1,..,tn) = body with t1..tn being the typing context. *)
+(* TODO: add EForall (type annotation before the "fun") *)
+(* TODO: maybe introduce_dictionaries would be a better name? *)
 and currying_typing_context typing_context body =
   let make_lambda body arg_type class_pred =
     let arg_name = make_dict_param_name_from_pred class_pred in
@@ -252,6 +253,7 @@ and check_wf_instance_members_name env idef cdef =
     | ihd :: itl, _ :: ctl -> check_members ihd itl ctl in
   check_members "" inames cnames
 
+(* TODO: check type of the class member (notably the use of unbound generic variable...) *)
 and class_definition env cdef =
   check_wf_class env cdef;
   let env = bind_class cdef.class_name cdef env in
@@ -413,10 +415,10 @@ and env_of_bindings env cdefs = List.(
 )
 
 (* TODO: uncomment after the term elaboration. *)
-and check_equal_types pos ty1 ty2 = ()
-(*   if not (equivalent ty1 ty2) then
-    raise (IncompatibleTypes (pos, ty1, ty2))
- *)
+and check_equal_types pos ty1 ty2 = () (* 
+  if not (equivalent ty1 ty2) then
+    raise (IncompatibleTypes (pos, ty1, ty2)) *)
+
 and type_application pos env x tys =
   List.iter (check_wf_type env KStar) tys;
   let (ts, (_, ty)) = lookup pos x env in
@@ -424,6 +426,21 @@ and type_application pos env x tys =
     substitute (List.combine ts tys) ty
   with _ ->
     raise (InvalidTypeApplication pos)
+
+and is_dictionary env dict_name =
+  let class_name = class_name_from_dict_name dict_name in
+
+and apply_dictionaries env e =
+  let e, e_ty = expression env e in
+  match destruct_tyarrow e_ty with
+  | None -> raise (ApplicationToNonFunctional pos)
+  | Some (ity, oty) ->
+    match ity with
+    | TyVar(_, ty_name)
+    | TyApp(_, ty_name, _) ->
+      if is_dictionary env ty_name then
+
+    | _ -> (e, e_ty)
 
 and expression env = function
   | EVar (pos, ((Name s) as x), tys) ->
@@ -436,7 +453,7 @@ and expression env = function
     (ELambda (pos, b, e), ntyarrow pos [aty] ty)
 
   | EApp (pos, a, b) ->
-    let a, a_ty = expression env a in
+    let a, a_ty = apply_dictionaries env a in
     let b, b_ty = expression env b in
     begin match destruct_tyarrow a_ty with
       | None ->
@@ -669,18 +686,21 @@ and eforall pos ts e =
     | _, _ ->
       raise (InvalidNumberOfTypeAbstraction pos)
 
-
 and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
   let env = introduce_type_parameters env ts in
   check_wf_scheme env ts xty;
 
   if is_value_form e then begin
-    let e = eforall pos ts e in
-    let e, ty = expression env e in
-    let b = (x, ty) in
-    check_equal_types pos xty ty;
-    (ValueDef (pos, ts, [], b, EForall (pos, ts, e)),
-     bind_scheme x ts ty env)
+    if not @@ is_function xty && ps <> [] then
+      raise (ClassPredicateInValueForbidden(pos,x))
+    else
+      let e = eforall pos ts e in
+      let e = currying_typing_context ps e in
+      let e, ty = expression env e in
+      let b = (x, ty) in
+      check_equal_types pos xty ty;
+      (ValueDef (pos, ts, [], b, EForall (pos, ts, e)),
+       bind_scheme x ts ty env)
   end else begin
     if ts <> [] then
       raise (ValueRestriction pos)
@@ -695,6 +715,10 @@ and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
 and value_declaration env (ValueDef (pos, ts, ps, (x, ty), e)) =
   bind_scheme x ts ty env
 
+and is_function ty =
+  match destruct_tyarrow ty with
+  | Some _ -> true
+  | None -> false
 
 and is_value_form = function
   | EVar _

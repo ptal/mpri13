@@ -42,3 +42,4 @@ exception CannotUseLabelRestrictedName of position * lname
 exception CannotUseValueRestrictedName of position * name
 exception UndeclaredInstance of position * tname * tname
 exception InaccessibleDictionaryInTypingContext of position * tname * tname * tname
+exception ClassPredicateInValueForbidden of position * name
