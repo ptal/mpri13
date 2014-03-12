@@ -146,17 +146,17 @@ and elaborate_instance_superdicts env idef class_name =
     | Not_found -> raise (InaccessibleDictionaryInTypingContext(pos, superdict_name, idef.instance_class_name, idef.instance_index)) in
   let cdef = lookup_class upos idef.instance_class_name env in
   List.map elaborate_superdict cdef.superclasses
-(* 
+
 and dict_params typing_context =
   let dict_param class_pred =
     let dict_name = dict_param_name_from_pred class_pred in
     let dict_type = dict_type_from_pred class_pred in
     (dict_name, dict_type) in
-  List.fold dict_param typing_context
+  List.map dict_param typing_context
 
-and introduce_dictionaries tparams typing_context body =
+and introduce_dictionaries tparams dparams body =
+  List.fold_left (fun body param -> ELambda(upos, param, body)) dparams body
 
- *)
 (* From a typing context, returns the currying of the arguments of 
    f(t1,..,tn) = body with t1..tn being the typing context. *)
 (* TODO: add EForall (type annotation before the "fun") *)
@@ -706,8 +706,8 @@ and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
     if not @@ is_function xty && ps <> [] then
       raise (ClassPredicateInValueForbidden(pos,x))
     else
-      let e = eforall pos ts e in
-      let e = currying_typing_context ps e in
+      let e = eforall pos ts e in(* 
+      let e = currying_typing_context ps e in *)
       let e, ty = expression env e in
       let b = (x, ty) in
       check_equal_types pos xty ty;

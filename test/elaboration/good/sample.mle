@@ -57,3 +57,4 @@ let rec ['a] [Ord 'a] (search : 'a -> 'a list -> boolean) =
    match l[] with
      | Nil['a] -> bfalse[]
      | Cons['a] (y, ys) -> orb [] (equal ['a] x[] y[]) (search ['a] x[] ys[])
+
