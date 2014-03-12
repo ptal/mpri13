@@ -25,7 +25,7 @@ module Make (P : Types.TypingSyntax) = struct
   and instance_definition = {
     instance_position       : position;
     instance_parameters     : tname list;
-    instance_typing_context : class_predicate list;
+    instance_typing_context : class_predicates;
     instance_class_name     : tname;
     instance_index          : tname;
     instance_members        : record_binding list;

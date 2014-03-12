@@ -61,7 +61,7 @@ and make_dict_param_name class_name idx =
   let (Name instance_name) = make_dict_instance_name class_name idx in
   Name ("dict_" ^ instance_name)
 
-and make_dict_param_name_from_pred (ClassPredicate(class_name, idx)) =
+and dict_param_name_from_pred (ClassPredicate(class_name, idx)) =
   make_dict_param_name class_name idx
 
 (* Instance *)
@@ -146,14 +146,24 @@ and elaborate_instance_superdicts env idef class_name =
     | Not_found -> raise (InaccessibleDictionaryInTypingContext(pos, superdict_name, idef.instance_class_name, idef.instance_index)) in
   let cdef = lookup_class upos idef.instance_class_name env in
   List.map elaborate_superdict cdef.superclasses
+(* 
+and dict_params typing_context =
+  let dict_param class_pred =
+    let dict_name = dict_param_name_from_pred class_pred in
+    let dict_type = dict_type_from_pred class_pred in
+    (dict_name, dict_type) in
+  List.fold dict_param typing_context
 
+and introduce_dictionaries tparams typing_context body =
+
+ *)
 (* From a typing context, returns the currying of the arguments of 
    f(t1,..,tn) = body with t1..tn being the typing context. *)
 (* TODO: add EForall (type annotation before the "fun") *)
 (* TODO: maybe introduce_dictionaries would be a better name? *)
 and currying_typing_context typing_context body =
   let make_lambda body arg_type class_pred =
-    let arg_name = make_dict_param_name_from_pred class_pred in
+    let arg_name = dict_param_name_from_pred class_pred in
     ELambda(upos, (arg_name, arg_type), body) in
   let args_types = type_from_typing_context typing_context in
   List.fold_left2 make_lambda body args_types typing_context
@@ -164,11 +174,11 @@ and make_instance_type tparams class_name idx =
   | p -> TyApp(upos, idx, instantiate p) in
   TyApp(upos, class_name, [idx_type]) 
 
-and instance_type_from_class_pred (ClassPredicate(class_name, idx)) = 
+and dict_type_from_pred (ClassPredicate(class_name, idx)) = 
   make_instance_type [] (make_class_name class_name) idx
 
 and type_from_typing_context typing_context =
-  List.map instance_type_from_class_pred typing_context
+  List.map dict_type_from_pred typing_context
 
 (* Name and type a dictionary instance function. *)
 and make_instance_binding idef class_name =
@@ -427,7 +437,8 @@ and type_application pos env x tys =
   with _ ->
     raise (InvalidTypeApplication pos)
 
-and is_dictionary env dict_name =
+(* TODO *)
+(* and is_dictionary env dict_name =
   let class_name = class_name_from_dict_name dict_name in
 
 and apply_dictionaries env e =
@@ -440,7 +451,7 @@ and apply_dictionaries env e =
     | TyApp(_, ty_name, _) ->
       if is_dictionary env ty_name then
 
-    | _ -> (e, e_ty)
+    | _ -> (e, e_ty) *)
 
 and expression env = function
   | EVar (pos, ((Name s) as x), tys) ->
@@ -453,7 +464,8 @@ and expression env = function
     (ELambda (pos, b, e), ntyarrow pos [aty] ty)
 
   | EApp (pos, a, b) ->
-    let a, a_ty = apply_dictionaries env a in
+(* TODO    let a, a_ty = apply_dictionaries env a in *)
+    let a, a_ty = expression env a in
     let b, b_ty = expression env b in
     begin match destruct_tyarrow a_ty with
       | None ->
