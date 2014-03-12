@@ -548,6 +548,13 @@ and expression env = function
     let rbstys = List.map (record_binding env) rbs in
     let rec check others rty = function
       | [] ->
+        begin match rty with
+          | Some (_, TyApp (_, rtcon, _)) ->
+            let labels = labels_of rtcon env in
+            if (List.length labels <> List.length others) then
+              raise (InvalidRecordConstruction pos)
+          | _ -> assert false (** Because we forbid empty record. *)
+        end;
         List.rev others, rty
       | (RecordBinding (l, e), ty) :: ls ->
         if List.exists (fun (RecordBinding (l', _)) -> l = l') others then
@@ -699,7 +706,7 @@ and eforall pos ts e =
       raise (InvalidNumberOfTypeAbstraction pos)
 
 and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
-  let env = introduce_type_parameters env ts in
+  let env' = introduce_type_parameters env ts in
   check_wf_scheme env ts xty;
 
   if is_value_form e then begin
@@ -708,7 +715,7 @@ and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
     else
       let e = eforall pos ts e in(* 
       let e = currying_typing_context ps e in *)
-      let e, ty = expression env e in
+      let e, ty = expression env' e in
       let b = (x, ty) in
       check_equal_types pos xty ty;
       (ValueDef (pos, ts, [], b, EForall (pos, ts, e)),
@@ -718,7 +725,7 @@ and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
       raise (ValueRestriction pos)
     else
       let e = eforall pos [] e in
-      let e, ty = expression env e in
+      let e, ty = expression env' e in
       let b = (x, ty) in
       check_equal_types pos xty ty;
       (ValueDef (pos, [], [], b, e), bind_simple x ty env)

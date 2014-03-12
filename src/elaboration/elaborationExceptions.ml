@@ -31,6 +31,7 @@ exception LabelAlreadyTaken of position * lname
 exception LabelDoesNotBelong of position * lname * tname * tname
 exception InvalidRecordInstantiation of position
 exception OverloadedSymbolCannotBeBound of Positions.position * name
+exception InvalidRecordConstruction of position
 exception SuperclassesCannotBeRelated of position * tname * tname * tname
 exception InstanceMemberNotInClass of position * tname * lname
 exception MissingInstanceMember of position * tname * lname

@@ -55,6 +55,8 @@ module type TypingSyntax = sig
   val destruct_instantiation_as_type_applications
     : instantiation -> t list option
 
+  val implicit : bool
+
 end
 
 module ImplicitTyping =
@@ -74,6 +76,9 @@ struct
       None
 
   let destruct_instantiation_as_type_applications _ = None
+
+  let implicit = true
+
 end
 
 module ExplicitTyping =
@@ -95,6 +100,7 @@ struct
 
   let destruct_instantiation_as_type_applications i = Some i
 
+  let implicit = false
 end
 
 let rec kind_of_arity = function
