@@ -10,10 +10,11 @@ type t = {
   classes      : (tname * class_definition) list;
   instances    : (class_predicate * instance_definition) list;
   labels       : (lname * (tnames * Types.t * tname)) list;
+  dictionaries : binding list; (* The dictionaries in the current context. *)
 }
 
 let empty = { values = []; types = []; classes = []; 
-  instances = []; labels = []; }
+  instances = []; labels = []; dictionaries = []; }
 
 let values env = env.values
 
@@ -96,6 +97,9 @@ let bind_label pos l ts ty rtcon env =
     raise (LabelAlreadyTaken (pos, l))
   with UnboundLabel _ ->
     { env with labels = (l, (ts, ty, rtcon)) :: env.labels }
+
+let bind_dict dict env =
+  { env with dictionaries = dict :: env.dictionaries }
 
 let initial =
   let primitive_type t k = TypeDef (undefined_position, k, t, DAlgebraic []) in

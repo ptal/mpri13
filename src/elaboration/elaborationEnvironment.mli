@@ -69,3 +69,5 @@ val lookup_label : position -> lname -> t -> tnames * Types.t * tname
 
 (** [labels_of rtcon e] returns all the labels of the record [rtcon]. *)
 val labels_of : tname -> t -> lname list
+
+val bind_dict : binding -> t -> t
