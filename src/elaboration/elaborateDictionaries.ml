@@ -69,7 +69,7 @@ and dict_param_name_from_pred (ClassPredicate(class_name, idx)) =
 and instance_definition env idefs = 
   let env = List.fold_left check_wf_instance env idefs in
   let instances, env = Misc.list_foldmap elaborate_instance env idefs in
-  (BDefinition(BindValue(undefined_position, instances)), env)
+  (BDefinition(BindRecValue(undefined_position, instances)), env)
 
 and is_primitive_type (TName x) =
   x = "int" || x = "char" || x = "unit"
@@ -103,16 +103,11 @@ and make_instance_type tparams class_name idx =
 and dict_type_from_pred (ClassPredicate(class_name, idx)) = 
   make_instance_type [] (make_class_name class_name) idx
 
-and type_from_typing_context typing_context =
-  List.map dict_type_from_pred typing_context
-
 (* Name and type a dictionary instance function. *)
 and make_instance_binding idef class_name =
   let instance_name = make_dict_instance_name idef.instance_class_name idef.instance_index in
   let result_type = make_instance_type idef.instance_parameters class_name idef.instance_index in
-  let params_type = type_from_typing_context idef.instance_typing_context in
-  let instance_type = ntyarrow upos params_type result_type in
-  (instance_name, instance_type)
+  (instance_name, result_type)
 
 and elaborate_instance env idef =
   let class_name = make_class_name idef.instance_class_name in
@@ -224,19 +219,17 @@ and dict_params typing_context =
   List.map dict_param typing_context
 
 (* Precondition: body do not contain type abstractions. *)
-and introduce_dictionaries_lambda env typing_context body =
+and introduce_dictionaries_lambda env typing_context body ty =
   let introduce_lambda (body, env) param = 
     let env = bind_dict param env in
     (ELambda(upos, param, body), env) in
+  let introduce_lambda_type ty (_, arg_type) =
+    ntyarrow upos [arg_type] ty in
   let params = dict_params typing_context in
-  Printf.printf "length env = %d" (List.length (dictionaries env));
   let e, env = List.fold_left introduce_lambda (body, env) params in
-  Printf.printf "length env = %d" (List.length (dictionaries env));
-  (e, env)
+  let ty = List.fold_left introduce_lambda_type ty params in
+  (e, ty, env)
 
-and introduce_dictionaries env ts typing_context body =
-  let body, env = introduce_dictionaries_lambda env typing_context body in
-  (EForall(upos, ts, body), env)
 
 and check_wf_typing_context_instance env idef =
   let pos = idef.instance_position in
@@ -744,8 +737,11 @@ and value_definition ?(allow_value_elaboration=false) env (ValueDef (pos, ts, ps
       raise (ClassPredicateInValueForbidden(pos,x))
     else
       let e = eforall pos ts e in
-      let e, env' = introduce_dictionaries_lambda env' ps e in
+      Printf.printf "Type before dict intro: %s\n" (string_of_type xty);
+      let e, xty, env' = introduce_dictionaries_lambda env' ps e xty in
+      Printf.printf "Type after dict intro: %s\n" (string_of_type xty);
       let e, ty = expression env' e in
+      Printf.printf "Type of expression: %s\n" (string_of_type ty);
       let b = (x, ty) in
       Printf.printf "ENter...\n";
       check_equal_types pos xty ty;

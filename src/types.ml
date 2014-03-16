@@ -126,7 +126,7 @@ let rec string_of_ty = function
 
 
 let rec equivalent ty1 ty2 =
-  Printf.printf "ty1 = %s\nty2 = %s\n" (string_of_ty ty1) (string_of_ty ty2);
+  (* Printf.printf "ty1 = %s\nty2 = %s\n" (string_of_ty ty1) (string_of_ty ty2); *)
   match ty1, ty2 with
     | TyVar (_, t), TyVar (_, t') ->
       t = t'
