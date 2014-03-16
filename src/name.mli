@@ -11,3 +11,5 @@ type lname = LName of string
 
 (** Type identifiers. *)
 type tname = TName of string
+
+val lower_tname : tname -> tname

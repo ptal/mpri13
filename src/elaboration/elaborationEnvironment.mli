@@ -13,6 +13,11 @@ val empty : t
 (** [initial] contains the builtin type constructors of {!XAST}. *)
 val initial : t
 
+val elaborated : t -> t
+val is_elaborated : t -> bool
+
+val dictionaries : t -> binding list
+
 (** [values env] projects [env] as an environment of bindings
     that associate type scheme to value identifiers. *)
 val values : t -> (tnames * binding) list

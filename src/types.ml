@@ -15,6 +15,18 @@ and class_predicate = ClassPredicate of tname * tname
 
 and class_predicates = class_predicate list
 
+let is_ground_type (TName x) = not (x.[0] = '\'')
+
+let destruct_tydict = function
+  | (TyApp (_, dict_name, [TyVar(_, idx)])) ->
+    Some (dict_name, idx)
+  | _ -> None
+
+let destruct_tydict_fatal pos ty =
+  match destruct_tydict ty with
+  | Some d -> d
+  | None -> Errors.fatal [start_of_position pos] "Try to destruct a dictionary with a different type from K 'a."
+
 let tarrow pos ty =
   TyApp (pos, TName "->", ty)
 
@@ -107,7 +119,14 @@ let rec kind_of_arity = function
   | 0 -> KStar
   | n -> KArrow (KStar, kind_of_arity (pred n))
 
+
+let rec string_of_ty = function 
+| TyVar(_, t) -> "TyVar(%s)"
+| TyApp(_, t, tys) -> "TyApp(%s," ^ (List.fold_left (fun a x -> a ^ (string_of_ty x)) "" tys) ^ ")"
+
+
 let rec equivalent ty1 ty2 =
+  Printf.printf "ty1 = %s\nty2 = %s\n" (string_of_ty ty1) (string_of_ty ty2);
   match ty1, ty2 with
     | TyVar (_, t), TyVar (_, t') ->
       t = t'

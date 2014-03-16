@@ -11,10 +11,16 @@ type t = {
   instances    : (class_predicate * instance_definition) list;
   labels       : (lname * (tnames * Types.t * tname)) list;
   dictionaries : binding list; (* The dictionaries in the current context. *)
+  elaborated   : bool; (* True if the expression currently analysed has already been elaborated. *)
 }
 
 let empty = { values = []; types = []; classes = []; 
-  instances = []; labels = []; dictionaries = []; }
+  instances = []; labels = []; dictionaries = []; elaborated = false; }
+
+let elaborated env = { env with elaborated = true }
+let is_elaborated env = env.elaborated
+
+let dictionaries env = env.dictionaries
 
 let values env = env.values
 
@@ -46,16 +52,18 @@ let lookup_type_definition pos t env =
 
 let lookup_class pos k env =
   try
-    List.assoc k env.classes
+    List.assoc (lower_tname k) env.classes
   with Not_found -> raise (UnboundClass (pos, k))
 
+(* TODO problem of cases and class name... *)
 let bind_class k c env =
+  let k' = lower_tname k in
   try
     let pos = c.class_position in
-    ignore (lookup_class pos k env);
+    ignore (lookup_class pos k' env);
     raise (AlreadyDefinedClass (pos, k))
   with UnboundClass _ ->
-    { env with classes = (k, c) :: env.classes }
+    { env with classes = (k', c) :: env.classes }
 
 let lookup_superclasses pos k env =
   (lookup_class pos k env).superclasses

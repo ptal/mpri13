@@ -159,7 +159,7 @@ exception UndeclaredInstance of position * tname * tname
 
 (** [InaccessibleDictionaryInTypingContext] is raised when a dictionary needed is not in the typing context
     of the instance under elaboration. *)
-exception InaccessibleDictionaryInTypingContext of position * tname * tname * tname
+exception InaccessibleDictionaryInTypingContext of position * tname * tname
 
 (** [ClassPredicateInValueForbidden] is raised when a class predicate is used in a value-form. *)
 exception ClassPredicateInValueForbidden of position * name

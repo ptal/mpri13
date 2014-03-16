@@ -57,6 +57,11 @@ module ExplicitTyping : TypingSyntax
   with type binding = name * t
   and type instantiation = t list
 
+val is_ground_type : tname -> bool
+
+val destruct_tydict : t -> (tname * tname) option
+val destruct_tydict_fatal : position -> t -> (tname * tname)
+
 (** [ntyarrow pos [ity0; ... ityN] oty] returns the type of the shape
     [ity0 -> ... ityN -> oty]. *)
 val ntyarrow : position -> t list -> t -> t

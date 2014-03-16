@@ -29,6 +29,14 @@ instance ['a] Eq 'a => Eq 'a list {
       )
 }
 
+class Foo 'a {
+  fo : 'a -> boolean
+}
+
+instance Foo int {
+  fo = fun (x : int) -> btrue[]
+}
+
 class Eq 'a => Ord 'a {
   lt : 'a -> 'a -> boolean
 }
@@ -57,4 +65,3 @@ let rec ['a] [Ord 'a] (search : 'a -> 'a list -> boolean) =
    match l[] with
      | Nil['a] -> bfalse[]
      | Cons['a] (y, ys) -> orb [] (equal ['a] x[] y[]) (search ['a] x[] ys[])
-
