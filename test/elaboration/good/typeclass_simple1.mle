@@ -1,0 +1,19 @@
+type 'a list = Nil | Cons of 'a * 'a list
+
+type external boolean = "bool"
+
+let external (btrue : boolean) = "true"
+let external (bfalse : boolean) = "false"
+let external (andb : boolean -> boolean -> boolean) = "fun x y -> x && y"
+let external (orb : boolean -> boolean -> boolean) = "fun x y -> x || y"
+let external (equal_int : int -> int -> boolean) = "fun x y -> x = y"
+let external (equal_char : char -> char -> boolean) = "fun x y -> x = y"
+let external (lt_int : int -> int -> boolean) = "fun x y -> x < y"
+
+class Eq 'a { equal : 'a -> 'a -> boolean }
+
+instance Eq int { equal = equal_int[] }
+instance Eq char { equal = equal_char[] }
+
+let (x : boolean) = equal [int] 8 8
+let (y : boolean) = equal [char] 'a' 'b'
