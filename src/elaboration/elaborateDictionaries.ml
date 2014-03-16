@@ -127,7 +127,10 @@ and elaborate_instance env idef =
     instance_binding, 
     EForall(upos, idef.instance_parameters, body)) in
   let env = value_declaration env body in
-  value_definition ~allow_value_elaboration:true env body
+  Printf.printf "Elaborate %s %s\n" ((fun (TName x) -> x) idef.instance_class_name) ((fun (TName x) -> x) idef.instance_index);
+  let r = value_definition ~allow_value_elaboration:true env body in
+  Printf.printf "End elaboration\n";
+  r
 
 and lookup_dict_instance env pos class_name idx =
   let instance_name = make_dict_instance_name class_name idx in
@@ -138,6 +141,7 @@ and lookup_dict_instance env pos class_name idx =
 
 and proj_dict_arg env (arg_name, arg_type) k idx =
   let (k', idx') = destruct_tydict_fatal upos arg_type in
+  Printf.printf "proj_dict_arg %s %s\n" ((fun (TName x) -> x) idx) ((fun (TName x) -> x) idx');
   if not (eq_tname idx idx') then
     raise Not_found
   else
@@ -145,6 +149,7 @@ and proj_dict_arg env (arg_name, arg_type) k idx =
     proj_dict env (projection, k') k (instantiate [idx])
 
 and proj_dict env (dict_proj, dict_tproj) k instantiation =
+  Printf.printf "proj_dict %s %s\n" ((fun (TName x) -> x) dict_tproj) ((fun (TName x) -> x) k);
   if eq_tname dict_tproj k then
     dict_proj
   else
@@ -155,6 +160,7 @@ and proj_superdicts env (dict_proj, base_class) k instantiation =
   | [] -> raise Not_found
   | superclass :: superclasses ->
     try
+      let superclass = lower_tname superclass in
       let projector = 
         EVar(upos, make_superdict_proj_name superclass base_class, instantiation) in
       let projection = EApp(upos, projector, dict_proj) in
@@ -179,6 +185,7 @@ and elaborate_variable_param pos env k idx =
 
 and elaborate_dict_parameter env dict_tyname idx =
   let class_tname = make_class_name (lookup_class upos dict_tyname env).class_name in
+  Printf.printf "\nelaborate_dict_parameter %s\n" ((fun (TName x) -> x) class_tname);
   let elaborate_ground_param idx ts =
     let (_, (name, _)) = lookup_dict_instance env upos class_tname idx in
     let e, _ = elaborate_variable env upos name ts in

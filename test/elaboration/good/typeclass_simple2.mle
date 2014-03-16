@@ -15,7 +15,6 @@ class Eq 'a { equal : 'a -> 'a -> boolean }
 instance Eq int { equal = equal_int[] }
 instance Eq char { equal = equal_char[] }
 
-
 class Eq 'a => Ord 'a {
   lt : 'a -> 'a -> boolean
 }
