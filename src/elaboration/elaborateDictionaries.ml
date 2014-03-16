@@ -64,14 +64,6 @@ and make_dict_param_name class_name idx =
 and dict_param_name_from_pred (ClassPredicate(class_name, idx)) =
   make_dict_param_name class_name idx
 
-(* Instance *)
-
-and instance_definition env idefs = 
-  let env = List.fold_left check_wf_instance env idefs in
-  let instances, env = Misc.list_foldmap elaborate_instance env idefs in
-  let e, env = value_binding true env (BindRecValue(upos, instances)) in
-  (BDefinition(e), env)
-
 and make_type_from_tname x =
   if is_ground_type x then
     TyApp(upos, x, [])
@@ -81,31 +73,154 @@ and make_type_from_tname x =
 and instantiate tparams =
   List.map (fun x -> make_type_from_tname x) tparams
 
-and elaborate_instance_superdicts env idef class_name =
-  let idx = idef.instance_index in
+(* Classes *)
+
+(* TODO: check type of the class member (notably the use of unbound generic variable...) *)
+and class_definition env cdef =
+  check_wf_class env cdef;
+  let env = bind_class cdef.class_name cdef env in
+  let class_type, env = elaborate_class env cdef in
+  let class_types = (TypeDefs (upos, [class_type])) in
+  let env = type_definitions env class_types in
+  let cmembers, env = elaborate_let_of_class_members env class_type in
+  (class_types, cmembers, env)
+
+(* Classes type checking. *)
+
+and check_wf_class env cdef =
+  check_superclasses env cdef
+
+and check_superclasses env cdef =
+  let check_is_superclass c1 c2 =
+    if (is_superclass cdef.class_position c1 c2 env) then
+      raise (SuperclassesCannotBeRelated(cdef.class_position, cdef.class_name, c1, c2)) in
+  let check_both_superclass (c1, c2) =
+    check_is_superclass c1 c2;
+    check_is_superclass c2 c1 in
+  iter_all_pairs2 check_both_superclass cdef.superclasses
+
+(* Elaboration of classes. *)
+
+and elaborate_class env cdef =
+  let upos = undefined_position in
+  let class_kind = KArrow(KStar, KStar) in
+  let class_name = lower_tname cdef.class_name in
+  let (superdicts, env) = elaborate_superdicts env cdef class_name in
+  let class_dict = DRecordType ([cdef.class_parameter], superdicts @ cdef.class_members) in
+  let elaborated_class_type = TypeDef (upos, class_kind, class_name, class_dict) in
+  (elaborated_class_type, env)
+
+and elaborate_superdicts env cdef class_name =
+  let upos = undefined_position in
+  let elaborate_superdict env superclass_name =
+    let superdict_label = make_superdict_label superclass_name cdef.class_name in
+    let superclass_name = lower_tname superclass_name in
+    let field_type = 
+      Types.(TyApp(upos, superclass_name, [TyVar (upos, cdef.class_parameter)])) in
+    ((upos, superdict_label, field_type), env) in
+  Misc.list_foldmap elaborate_superdict env cdef.superclasses
+
+and elaborate_let_of_class_members env = function
+  | TypeDef (_, _, dict_tname, dict_type) ->
+    begin match dict_type with
+    | DRecordType(tparams, members) ->
+      let upos = undefined_position in
+      let elaborate_let_of_class_member env (_, ((LName member_name) as lmember), member_type) =
+        let local_dict_name = Name "dict" in
+        let dict_lambda_type = TyApp(upos, dict_tname, instantiate tparams) in
+        let dict_arg = (local_dict_name, dict_lambda_type) in
+        let dict_lambda_body = ERecordAccess(upos, EVar(upos, local_dict_name, instantiate tparams), lmember) in
+        let dict_lambda = ELambda(upos, dict_arg, dict_lambda_body) in
+        let dict_access_binding = ((Name member_name), TyApp(upos, TName "->", [dict_lambda_type; member_type])) in
+        let dict_access = ValueDef(upos, tparams, [], dict_access_binding, dict_lambda) in
+        let env = bind_dict_access_value env upos tparams dict_access_binding in
+        (BDefinition(BindValue(upos, [dict_access])), env) in
+      Misc.list_foldmap elaborate_let_of_class_member env members
+    | _ -> failwith "Elaboration of class members stored in a record only."
+    end
+  | _ -> failwith "Cannot elaborate external type."
+
+and bind_dict_access_value env pos tparams (member_name, member_type) =
+  begin try
+    ignore (lookup pos member_name env);
+    raise (CannotUseValueRestrictedName(pos, member_name))
+  with
+  | UnboundIdentifier _ ->
+    bind_scheme member_name tparams member_type env
+  end
+
+(* Instance *)
+
+and instance_definition env idefs = 
+  let env = List.fold_left check_wf_instance env idefs in
+  let instances, env = Misc.list_foldmap elaborate_instance env idefs in
+  let e, env = value_binding true env (BindRecValue(upos, instances)) in
+  (BDefinition(e), env)
+
+(* Instance type checking *)
+
+(* TODO: Check that all variables used in the typing context are also used in the "result type".
+   Issue a warning if a variable is not used anywhere.
+   Issue an error if a variable is only used in the typing context. *)
+and check_wf_instance env idef =
+  check_wf_typing_context_instance env idef;
+  let env = bind_instance (ClassPredicate(idef.instance_class_name, idef.instance_index)) idef env in
+  let cdef = lookup_class idef.instance_position idef.instance_class_name env in
+  let tindex = lookup_type_definition idef.instance_position idef.instance_index env in
+  (* TODO must be of kind  (KArrow(KStar, KStar)) *)
+  ignore (type_definition env tindex);
+  check_wf_instance_members env idef cdef;
+  env
+
+and check_wf_typing_context_instance env idef =
   let pos = idef.instance_position in
-  let elaborate_superdict superdict_name =
-    let superdict_builder_name = make_dict_instance_name superdict_name idx in
-    let superdict_builder = EVar(upos, superdict_builder_name, (instantiate idef.instance_parameters)) in
-    let superdict_label = make_superdict_label superdict_name class_name in
-    RecordBinding(superdict_label, superdict_builder) in
-  let superclasses = (lookup_class pos idef.instance_class_name env).superclasses in
-  List.map elaborate_superdict superclasses
+  let check_typing_context_relation () =
+    let check_is_superclass c1 c2 =
+      if (is_superclass pos c1 c2 env) then
+        raise (InstanceTypingContextCannotBeRelated(pos, idef.instance_class_name, c1, c2)) in
+    let check_is_identical c1 c2 =
+      if (c1 = c2) then
+        raise (InstanceTypingContextCannotBeEqual(pos, idef.instance_class_name, c1)) in
+    let check_both_context (ClassPredicate(name1, idx1), ClassPredicate(name2, idx2)) =
+      if (idx1 = idx2) then begin
+        check_is_superclass name1 name2;
+        check_is_superclass name2 name1;
+        check_is_identical name1 name2
+      end in
+    iter_all_pairs2 check_both_context idef.instance_typing_context in
 
-and make_instance_type tparams class_name idx =
-  let idx_type = match tparams with
-  | [] -> make_type_from_tname idx
-  | p -> TyApp(upos, idx, instantiate p) in
-  TyApp(upos, class_name, [idx_type]) 
+  let check_typing_context_existence () =
+    let check_typing_context (ClassPredicate(name, idx)) =
+      if List.mem idx idef.instance_parameters then
+        ignore (lookup_class pos name env)
+      else 
+        Errors.fatal [start_of_position pos] 
+          "Ground type are not allowed in the typing context." in 
+    List.iter check_typing_context idef.instance_typing_context in
 
-and dict_type_from_pred (ClassPredicate(class_name, idx)) = 
-  make_instance_type [] (make_class_name class_name) idx
+  check_typing_context_existence ();
+  check_typing_context_relation ()
 
-(* Name and type a dictionary instance function. *)
-and make_instance_binding idef class_name =
-  let instance_name = make_dict_instance_name idef.instance_class_name idef.instance_index in
-  let result_type = make_instance_type idef.instance_parameters class_name idef.instance_index in
-  (instance_name, result_type)
+and check_wf_instance_members env idef cdef =
+  let env = introduce_type_parameters env idef.instance_parameters in
+  check_wf_instance_members_name env idef cdef
+
+and check_wf_instance_members_name env idef cdef =
+  let sort l = List.sort String.compare l in
+  let inames = sort @@ List.map (fun (RecordBinding((LName mname), _)) -> mname) idef.instance_members in
+  let cnames = sort @@ List.map (fun (_,(LName mname),_) -> mname) cdef.class_members in
+  let rec check_members last il cl =
+    match il, cl with
+    | [], [] -> ()
+    | ihd :: _, _ when last = ihd -> raise (AlreadyDefinedInstanceMember(idef.instance_position, LName(ihd)))
+    | ihd :: _, [] -> raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(ihd)))
+    | [], chd :: _ -> raise (MissingInstanceMember(idef.instance_position, cdef.class_name, LName(chd)))
+    | ihd :: _, chd :: _ when ihd <> chd ->
+        raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(chd)))
+    | ihd :: itl, _ :: ctl -> check_members ihd itl ctl in
+  check_members "" inames cnames
+
+(* Instance elaboration *)
 
 and elaborate_instance env idef =
   let class_name = make_class_name idef.instance_class_name in
@@ -120,16 +235,34 @@ and elaborate_instance env idef =
     instance_binding, 
     EForall(upos, idef.instance_parameters, e)), env)
 
-and lookup_dict_instance env pos class_name idx =
-  let instance_name = make_dict_instance_name class_name idx in
-  try
-    lookup pos instance_name env
-  with
-  | UnboundIdentifier _ -> raise (UndeclaredInstance(pos, class_name, idx))
+(* Name and type a dictionary instance function. *)
+and make_instance_binding idef class_name =
+  let instance_name = make_dict_instance_name idef.instance_class_name idef.instance_index in
+  let result_type = make_instance_type idef.instance_parameters class_name idef.instance_index in
+  (instance_name, result_type)
+
+and make_instance_type tparams class_name idx =
+  let idx_type = match tparams with
+  | [] -> make_type_from_tname idx
+  | p -> TyApp(upos, idx, instantiate p) in
+  TyApp(upos, class_name, [idx_type]) 
+
+and elaborate_instance_superdicts env idef class_name =
+  let idx = idef.instance_index in
+  let pos = idef.instance_position in
+  let elaborate_superdict superdict_name =
+    let superdict_builder_name = make_dict_instance_name superdict_name idx in
+    let superdict_builder = EVar(upos, superdict_builder_name, (instantiate idef.instance_parameters)) in
+    let superdict_label = make_superdict_label superdict_name class_name in
+    RecordBinding(superdict_label, superdict_builder) in
+  let superclasses = (lookup_class pos idef.instance_class_name env).superclasses in
+  List.map elaborate_superdict superclasses
+
+
+(* Term elaboration *)
 
 and proj_dict_arg env (arg_name, arg_type) k idx =
   let (k', idx') = destruct_tydict_fatal upos arg_type in
-  (* Printf.printf "proj_dict_arg %s %s\n" ((fun (TName x) -> x) idx) ((fun (TName x) -> x) idx'); *)
   if not (eq_tname idx idx') then
     raise Not_found
   else
@@ -137,7 +270,6 @@ and proj_dict_arg env (arg_name, arg_type) k idx =
     proj_dict env (projection, k') k (instantiate [idx])
 
 and proj_dict env (dict_proj, dict_tproj) k instantiation =
-  (* Printf.printf "proj_dict %s %s\n" ((fun (TName x) -> x) dict_tproj) ((fun (TName x) -> x) k); *)
   if eq_tname dict_tproj k then
     dict_proj
   else
@@ -169,7 +301,6 @@ and elaborate_variable_param pos env k idx =
 
 and elaborate_dict_parameter env dict_tyname idx =
   let class_tname = make_class_name (lookup_class upos dict_tyname env).class_name in
-  (* Printf.printf "\nelaborate_dict_parameter %s\n" ((fun (TName x) -> x) class_tname); *)
   let elaborate_ground_param idx ts =
     let (_, (name, _)) = lookup_dict_instance env upos class_tname idx in
     let e, _ = elaborate_variable env upos name ts in
@@ -181,6 +312,13 @@ and elaborate_dict_parameter env dict_tyname idx =
     elaborate_variable_param pos env class_tname idx
   | TyApp(_, idx, ts) ->
     elaborate_ground_param idx ts
+
+and lookup_dict_instance env pos class_name idx =
+  let instance_name = make_dict_instance_name class_name idx in
+  try
+    lookup pos instance_name env
+  with
+  | UnboundIdentifier _ -> raise (UndeclaredInstance(pos, class_name, idx))
 
 and elaborate_parameters env expr = function
   | [] -> expr
@@ -200,14 +338,20 @@ and elaborate_variable env pos name tys =
   let e = elaborate_parameters env var param_tys in
   (e, elaborated env)
 
-and dict_params ps =
-  let dict_param class_pred =
-    let dict_name = dict_param_name_from_pred class_pred in
-    let dict_type = dict_type_from_pred class_pred in
-    (dict_name, dict_type) in
-  List.map dict_param ps
+(* Function introducing the dictionaries as lambda when a dictionary is available. *)
 
-(* Precondition: body do not contain type abstractions. *)
+and introduce_typing_context env ps =
+  let introduce_dict env param =
+    bind_dict param env in
+  let params = dict_params ps in
+  List.fold_left introduce_dict env params
+
+(* Precondition: 'e' do not contain type abstractions. *)
+and introduce_dictionaries ts ps e ty =
+ let (e, ty) = introduce_dictionaries_lambda ps e ty in
+ (EForall(upos, ts, e), ty)
+
+(* Precondition: 'e' do not contain type abstractions. *)
 and introduce_dictionaries_lambda ps e ty =
   let introduce_lambda e param = 
     ELambda(upos, param, e) in
@@ -218,164 +362,15 @@ and introduce_dictionaries_lambda ps e ty =
   let ty = List.fold_left introduce_lambda_type ty params in
   (e, ty)
 
-and introduce_dictionaries ts ps e ty =
- let (e, ty) = introduce_dictionaries_lambda ps e ty in
- (EForall(upos, ts, e), ty)
+and dict_params ps =
+  let dict_param class_pred =
+    let dict_name = dict_param_name_from_pred class_pred in
+    let dict_type = dict_type_from_pred class_pred in
+    (dict_name, dict_type) in
+  List.map dict_param ps
 
-and introduce_typing_context env ps =
-  let introduce_dict env param =
-    bind_dict param env in
-  let params = dict_params ps in
-  List.fold_left introduce_dict env params
-
-and check_wf_typing_context_instance env idef =
-  let pos = idef.instance_position in
-  let check_typing_context_relation () =
-    let check_is_superclass c1 c2 =
-      if (is_superclass pos c1 c2 env) then
-        raise (InstanceTypingContextCannotBeRelated(pos, idef.instance_class_name, c1, c2)) in
-    let check_is_identical c1 c2 =
-      if (c1 = c2) then
-        raise (InstanceTypingContextCannotBeEqual(pos, idef.instance_class_name, c1)) in
-    let check_both_context (ClassPredicate(name1, idx1), ClassPredicate(name2, idx2)) =
-      if (idx1 = idx2) then begin
-        check_is_superclass name1 name2;
-        check_is_superclass name2 name1;
-        check_is_identical name1 name2
-      end in
-    iter_all_pairs2 check_both_context idef.instance_typing_context in
-
-  let check_typing_context_existence () =
-    let check_typing_context (ClassPredicate(name, idx) as cp) =
-      if List.mem idx idef.instance_parameters then
-        ignore (lookup_class pos name env)
-      else
-      (* TODO: check in the course note that it is possible to have a typing context with a ground type (e.g. A int). *)
-        ignore (lookup_instance pos cp env) in 
-    List.iter check_typing_context idef.instance_typing_context in
-
-  check_typing_context_existence ();
-  check_typing_context_relation ()
-
-(* TODO: Check that all variables used in the typing context are also used in the "result type".
-   Issue a warning if a variable is not used anywhere.
-   Issue an error if a variable is only used in the typing context. *)
-and check_wf_instance env idef =
-  check_wf_typing_context_instance env idef;
-  let env = bind_instance (ClassPredicate(idef.instance_class_name, idef.instance_index)) idef env in
-  let cdef = lookup_class idef.instance_position idef.instance_class_name env in
-  let tindex = lookup_type_definition idef.instance_position idef.instance_index env in
-  (* TODO must be of kind  (KArrow(KStar, KStar)) *)
-  ignore (type_definition env tindex);
-  check_wf_instance_members env idef cdef;
-  env
-
-and check_wf_instance_members env idef cdef =
-  let env = introduce_type_parameters env idef.instance_parameters in
-  check_wf_instance_members_name env idef cdef
-
-and check_wf_instance_members_name env idef cdef =
-  let sort l = List.sort String.compare l in
-  let inames = sort @@ List.map (fun (RecordBinding((LName mname), _)) -> mname) idef.instance_members in
-  let cnames = sort @@ List.map (fun (_,(LName mname),_) -> mname) cdef.class_members in
-  let rec check_members last il cl =
-    match il, cl with
-    | [], [] -> ()
-    | ihd :: _, _ when last = ihd -> raise (AlreadyDefinedInstanceMember(idef.instance_position, LName(ihd)))
-    | ihd :: _, [] -> raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(ihd)))
-    | [], chd :: _ -> raise (MissingInstanceMember(idef.instance_position, cdef.class_name, LName(chd)))
-    | ihd :: _, chd :: _ when ihd <> chd ->
-        raise (InstanceMemberNotInClass(idef.instance_position, cdef.class_name, LName(chd)))
-    | ihd :: itl, _ :: ctl -> check_members ihd itl ctl in
-  check_members "" inames cnames
-
-(* TODO: check type of the class member (notably the use of unbound generic variable...) *)
-and class_definition env cdef =
-  check_wf_class env cdef;
-  let env = bind_class cdef.class_name cdef env in
-  let class_type, env = elaborate_class env cdef in
-  let class_types = (TypeDefs (upos, [class_type])) in
-  let env = type_definitions env class_types in
-  let cmembers, env = elaborate_let_of_class_members env class_type in
-  (class_types, cmembers, env)
-
-and elaborate_class env cdef =
-  let upos = undefined_position in
-  let class_kind = KArrow(KStar, KStar) in
-  let class_name = lower_tname cdef.class_name in
-  let (superdicts, env) = elaborate_superdicts env cdef class_name in
-  let class_dict = DRecordType ([cdef.class_parameter], superdicts @ cdef.class_members) in
-  let elaborated_class_type = TypeDef (upos, class_kind, class_name, class_dict) in
-  (elaborated_class_type, env)
-
-and bind_elaborated_class env pos class_name class_kind class_type =
-  begin try
-    ignore (lookup_type_kind pos class_name env);
-    raise (CannotUseTypeRestrictedName(pos, class_name))
-  with
-  | UnboundTypeVariable _ -> 
-    bind_type class_name class_kind class_type env
-  end
-
-and elaborate_superdicts env cdef class_name =
-  let upos = undefined_position in
-  let elaborate_superdict env superclass_name =
-    let superdict_label = make_superdict_label superclass_name cdef.class_name in
-    let superclass_name = lower_tname superclass_name in
-    let field_type = Types.(TyApp(upos, superclass_name, [TyVar (upos, cdef.class_parameter)])) in
-(*     let env = bind_superdict_label env cdef.class_position superdict_label cdef.class_parameter field_type class_name in *)
-    ((upos, superdict_label, field_type), env) in
-  Misc.list_foldmap elaborate_superdict env cdef.superclasses
-
-and bind_superdict_label env pos superdict_label class_parameter field_type class_name =
-  begin try
-    ignore (lookup_label pos superdict_label env);
-    raise (CannotUseLabelRestrictedName(pos, superdict_label))
-  with
-  | UnboundLabel _ ->
-    bind_label pos superdict_label [class_parameter] field_type class_name env
-  end
-
-and elaborate_let_of_class_members env = function
-  | TypeDef (_, _, dict_tname, dict_type) ->
-    begin match dict_type with
-    | DRecordType(tparams, members) ->
-      let upos = undefined_position in
-      let elaborate_let_of_class_member env (_, ((LName member_name) as lmember), member_type) =
-        let local_dict_name = Name "dict" in
-        let dict_lambda_type = TyApp(upos, dict_tname, instantiate tparams) in
-        let dict_arg = (local_dict_name, dict_lambda_type) in
-        let dict_lambda_body = ERecordAccess(upos, EVar(upos, local_dict_name, instantiate tparams), lmember) in
-        let dict_lambda = ELambda(upos, dict_arg, dict_lambda_body) in
-        let dict_access_binding = ((Name member_name), TyApp(upos, TName "->", [dict_lambda_type; member_type])) in
-        let dict_access = ValueDef(upos, tparams, [], dict_access_binding, dict_lambda) in
-        let env = bind_dict_access_value env upos tparams dict_access_binding in
-        (BDefinition(BindValue(upos, [dict_access])), env) in
-      Misc.list_foldmap elaborate_let_of_class_member env members
-    | _ -> failwith "Elaboration of class members stored in a record only."
-    end
-  | _ -> failwith "Cannot elaborate external type."
-
-and bind_dict_access_value env pos tparams (member_name, member_type) =
-  begin try
-    ignore (lookup pos member_name env);
-    raise (CannotUseValueRestrictedName(pos, member_name))
-  with
-  | UnboundIdentifier _ ->
-    bind_scheme member_name tparams member_type env
-  end
-
-and check_wf_class env cdef =
-  check_superclasses env cdef
-
-and check_superclasses env cdef =
-  let check_is_superclass c1 c2 =
-    if (is_superclass cdef.class_position c1 c2 env) then
-      raise (SuperclassesCannotBeRelated(cdef.class_position, cdef.class_name, c1, c2)) in
-  let check_both_superclass (c1, c2) =
-    check_is_superclass c1 c2;
-    check_is_superclass c2 c1 in
-  iter_all_pairs2 check_both_superclass cdef.superclasses
+and dict_type_from_pred (ClassPredicate(class_name, idx)) = 
+  make_instance_type [] (make_class_name class_name) idx
 
 and type_definitions env (TypeDefs (_, tdefs)) =
   let env = List.fold_left env_of_type_definition env tdefs in
