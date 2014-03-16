@@ -1,0 +1,50 @@
+type 'a list = Nil | Cons of 'a * 'a list
+
+type external boolean = "bool"
+
+let external (btrue : boolean) = "true"
+let external (bfalse : boolean) = "false"
+let external (andb : boolean -> boolean -> boolean) = "fun x y -> x && y"
+let external (orb : boolean -> boolean -> boolean) = "fun x y -> x || y"
+let external (equal_int : int -> int -> boolean) = "fun x y -> x = y"
+let external (equal_char : char -> char -> boolean) = "fun x y -> x = y"
+let external (lt_int : int -> int -> boolean) = "fun x y -> x < y"
+
+type ('a, 'b) couple = Couple of 'a * 'b
+
+class Eq 'a { equal : 'a -> 'a -> boolean }
+
+instance Eq int { equal = equal_int[] }
+instance Eq char { equal = equal_char[] }
+
+instance ['a] Eq 'a => Eq 'a list {
+  equal = fun (l1 : 'a list) -> fun (l2 : 'a list) ->
+    match l1 [] with
+      | Nil['a] -> (match l2 [] with Nil['a] -> btrue [] | _ -> bfalse [])
+      | Cons['a] (x, xs) -> (
+        match l2 [] with
+          | Nil['a] ->
+            bfalse[]
+          | Cons['a] (y, ys) -> 
+            andb[] (equal['a] x[] y[]) (equal['a list] xs[] ys[])
+      )
+}
+
+instance ['a 'b] Eq 'a, Eq 'b => Eq ('a,'b) couple {
+  equal = fun (c1 : ('a,'b) couple) -> fun (c2 : ('a,'b) couple) ->
+    match c1[] with
+      | Couple['a, 'b](c11, c12) -> (
+        match c2[] with
+        | Couple['a, 'b](c21, c22) ->
+          andb[] (equal['a] c11[] c21[]) (equal['b] c12[] c22[])
+      )
+}
+
+let (l1 : int list) = (Cons[int](9, Cons[int](1, Nil[int])))
+let (l2 : int list) = (Cons[int](1, Cons[int](1, Nil[int])))
+
+let (c1 : (int list, int list) couple) = (Couple[int list, int list](l1[], l1[]))
+let (c2 : (int list, int list) couple) = (Couple[int list, int list](l1[], l2[]))
+
+let (res1 : boolean) = equal[(int list, int list) couple] c1[] c1[]
+let (res2 : boolean) = equal[(int list, int list) couple] c1[] c2[]
