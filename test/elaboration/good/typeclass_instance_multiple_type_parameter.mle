@@ -1,0 +1,5 @@
+type ('a, 'b) pair = Pair of 'a * 'b
+class H 'a { h : 'a -> int }
+instance ['a 'b] H 'a, H 'b => H ('a, 'b) pair { h = fun (x : ('a, 'b) pair) -> 0 }
+instance H int { h = fun (x_1 : int) -> x_1[] }
+instance H char { h = fun (x_2 : char) -> 1 }
