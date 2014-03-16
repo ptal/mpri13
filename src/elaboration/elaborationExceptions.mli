@@ -163,3 +163,5 @@ exception InaccessibleDictionaryInTypingContext of position * tname * tname
 
 (** [ClassPredicateInValueForbidden] is raised when a class predicate is used in a value-form. *)
 exception ClassPredicateInValueForbidden of position * name
+
+exception SameValueNameAsMemberName of position * name

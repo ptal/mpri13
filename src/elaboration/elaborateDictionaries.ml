@@ -34,7 +34,7 @@ and block env = function
     ([BTypeDefinitions ts], env)
 
   | BDefinition d ->
-    let d, env = value_binding env d in
+    let d, env = value_binding false env d in
     ([BDefinition d], env)
 
   | BClassDefinition c ->
@@ -69,13 +69,11 @@ and dict_param_name_from_pred (ClassPredicate(class_name, idx)) =
 and instance_definition env idefs = 
   let env = List.fold_left check_wf_instance env idefs in
   let instances, env = Misc.list_foldmap elaborate_instance env idefs in
-  (BDefinition(BindRecValue(undefined_position, instances)), env)
-
-and is_primitive_type (TName x) =
-  x = "int" || x = "char" || x = "unit"
+  let e, env = value_binding true env (BindRecValue(upos, instances)) in
+  (BDefinition(e), env)
 
 and make_type_from_tname x =
-  if is_primitive_type x then
+  if is_ground_type x then
     TyApp(upos, x, [])
   else
     TyVar(upos, x)
@@ -113,19 +111,14 @@ and elaborate_instance env idef =
   let class_name = make_class_name idef.instance_class_name in
   let instance_binding = make_instance_binding idef class_name in
   let super_dict_members = elaborate_instance_superdicts env idef class_name in
-  let body = ERecordCon(upos, (name_of_tname class_name), 
+  let e = ERecordCon(upos, (name_of_tname class_name), 
     [TyApp(upos, idef.instance_index, instantiate idef.instance_parameters)], 
     super_dict_members @ idef.instance_members) in
-  let body = ValueDef(upos, 
+  (ValueDef(upos, 
     idef.instance_parameters, 
     idef.instance_typing_context, 
     instance_binding, 
-    EForall(upos, idef.instance_parameters, body)) in
-  let env = value_declaration env body in
-  Printf.printf "Elaborate %s %s\n" ((fun (TName x) -> x) idef.instance_class_name) ((fun (TName x) -> x) idef.instance_index);
-  let r = value_definition ~allow_value_elaboration:true env body in
-  Printf.printf "End elaboration\n";
-  r
+    EForall(upos, idef.instance_parameters, e)), env)
 
 and lookup_dict_instance env pos class_name idx =
   let instance_name = make_dict_instance_name class_name idx in
@@ -136,7 +129,7 @@ and lookup_dict_instance env pos class_name idx =
 
 and proj_dict_arg env (arg_name, arg_type) k idx =
   let (k', idx') = destruct_tydict_fatal upos arg_type in
-  Printf.printf "proj_dict_arg %s %s\n" ((fun (TName x) -> x) idx) ((fun (TName x) -> x) idx');
+  (* Printf.printf "proj_dict_arg %s %s\n" ((fun (TName x) -> x) idx) ((fun (TName x) -> x) idx'); *)
   if not (eq_tname idx idx') then
     raise Not_found
   else
@@ -144,7 +137,7 @@ and proj_dict_arg env (arg_name, arg_type) k idx =
     proj_dict env (projection, k') k (instantiate [idx])
 
 and proj_dict env (dict_proj, dict_tproj) k instantiation =
-  Printf.printf "proj_dict %s %s\n" ((fun (TName x) -> x) dict_tproj) ((fun (TName x) -> x) k);
+  (* Printf.printf "proj_dict %s %s\n" ((fun (TName x) -> x) dict_tproj) ((fun (TName x) -> x) k); *)
   if eq_tname dict_tproj k then
     dict_proj
   else
@@ -164,15 +157,11 @@ and proj_superdicts env (dict_proj, base_class) k instantiation =
     | Not_found -> aux superclasses in
   aux (lookup_class upos base_class env).superclasses
 
-and print_dict ((Name arg_name), _) =
-  Printf.printf "(%s, _)\n" arg_name
-
 and elaborate_variable_param pos env k idx =
   let rec find_matching_arg = function
   | [] -> raise (InaccessibleDictionaryInTypingContext(pos, k, idx))
   | dict :: dicts -> 
     try
-      print_dict dict;
       proj_dict_arg env dict k idx
     with
     | Not_found -> find_matching_arg dicts in
@@ -180,7 +169,7 @@ and elaborate_variable_param pos env k idx =
 
 and elaborate_dict_parameter env dict_tyname idx =
   let class_tname = make_class_name (lookup_class upos dict_tyname env).class_name in
-  Printf.printf "\nelaborate_dict_parameter %s\n" ((fun (TName x) -> x) class_tname);
+  (* Printf.printf "\nelaborate_dict_parameter %s\n" ((fun (TName x) -> x) class_tname); *)
   let elaborate_ground_param idx ts =
     let (_, (name, _)) = lookup_dict_instance env upos class_tname idx in
     let e, _ = elaborate_variable env upos name ts in
@@ -211,25 +200,33 @@ and elaborate_variable env pos name tys =
   let e = elaborate_parameters env var param_tys in
   (e, elaborated env)
 
-and dict_params typing_context =
+and dict_params ps =
   let dict_param class_pred =
     let dict_name = dict_param_name_from_pred class_pred in
     let dict_type = dict_type_from_pred class_pred in
     (dict_name, dict_type) in
-  List.map dict_param typing_context
+  List.map dict_param ps
 
 (* Precondition: body do not contain type abstractions. *)
-and introduce_dictionaries_lambda env typing_context body ty =
-  let introduce_lambda (body, env) param = 
-    let env = bind_dict param env in
-    (ELambda(upos, param, body), env) in
+and introduce_dictionaries_lambda ps e ty =
+  let introduce_lambda e param = 
+    ELambda(upos, param, e) in
   let introduce_lambda_type ty (_, arg_type) =
     ntyarrow upos [arg_type] ty in
-  let params = dict_params typing_context in
-  let e, env = List.fold_left introduce_lambda (body, env) params in
+  let params = dict_params ps in
+  let e = List.fold_left introduce_lambda e params in
   let ty = List.fold_left introduce_lambda_type ty params in
-  (e, ty, env)
+  (e, ty)
 
+and introduce_dictionaries ts ps e ty =
+ let (e, ty) = introduce_dictionaries_lambda ps e ty in
+ (EForall(upos, ts, e), ty)
+
+and introduce_typing_context env ps =
+  let introduce_dict env param =
+    bind_dict param env in
+  let params = dict_params ps in
+  List.fold_left introduce_dict env params
 
 and check_wf_typing_context_instance env idef =
   let pos = idef.instance_position in
@@ -275,12 +272,7 @@ and check_wf_instance env idef =
 
 and check_wf_instance_members env idef cdef =
   let env = introduce_type_parameters env idef.instance_parameters in
-  check_wf_instance_members_name env idef cdef;
-(*   check_wf_instance_members_body env idef *)
-
-and check_wf_instance_members_body env idef =
-  let check_body (RecordBinding(_, mem_body)) = ignore (expression env mem_body) in
-  List.iter check_body idef.instance_members
+  check_wf_instance_members_name env idef cdef
 
 and check_wf_instance_members_name env idef cdef =
   let sort l = List.sort String.compare l in
@@ -315,8 +307,6 @@ and elaborate_class env cdef =
   let class_dict = DRecordType ([cdef.class_parameter], superdicts @ cdef.class_members) in
   let elaborated_class_type = TypeDef (upos, class_kind, class_name, class_dict) in
   (elaborated_class_type, env)
-  (* let env = bind_elaborated_class env cdef.class_position class_name class_kind elaborated_class_type in *)
-  (* (elaborated_class_type, env) *)
 
 and bind_elaborated_class env pos class_name class_kind class_type =
   begin try
@@ -499,7 +489,7 @@ and expression env = function
     end
 
   | EBinding (pos, vb, e) ->
-    let vb, env = value_binding env vb in
+    let vb, env = value_binding false env vb in
     let e, ty = expression env e in
     (EBinding (pos, vb, e), ty)
 
@@ -697,12 +687,14 @@ and record_binding env (RecordBinding (l, e)) =
   let e, ty = expression env e in
   (RecordBinding (l, e), ty)
 
-and value_binding env = function
+and value_binding force_elaboration env = function
   | BindValue (pos, vs) ->
+    let vs = List.map (value_elaboration force_elaboration env) vs in
     let (vs, env) = Misc.list_foldmap value_definition env vs in
     (BindValue (pos, vs), env)
 
   | BindRecValue (pos, vs) ->
+    let vs = List.map (value_elaboration force_elaboration env) vs in
     let env = List.fold_left value_declaration env vs in
     let (vs, _) = Misc.list_foldmap value_definition env vs in
     (BindRecValue (pos, vs), env)
@@ -713,51 +705,45 @@ and value_binding env = function
 
 and eforall pos ts e =
   match ts, e with
-    | ts, EForall (pos, [], ((EForall _) as e)) ->
-      eforall pos ts e
-    | [], EForall (pos, [], e) ->
-      e
-    | [], EForall (pos, _, _) ->
-      raise (InvalidNumberOfTypeAbstraction pos)
-    | [], e ->
-      e
-    | x :: xs, EForall (pos, t :: ts, e) ->
-      if x <> t then
-        raise (SameNameInTypeAbstractionAndScheme pos);
-      eforall pos xs (EForall (pos, ts, e))
-    | _, _ ->
-      raise (InvalidNumberOfTypeAbstraction pos)
+  | ts, EForall (pos, [], ((EForall _) as e)) ->
+    eforall pos ts e
+  | [], EForall (pos, [], e) ->
+    e
+  | [], EForall (pos, _, _) ->
+    raise (InvalidNumberOfTypeAbstraction pos)
+  | [], e ->
+    e
+  | x :: xs, EForall (pos, t :: ts, e) ->
+    if x <> t then
+      raise (SameNameInTypeAbstractionAndScheme pos);
+    eforall pos xs (EForall (pos, ts, e))
+  | _, _ ->
+    raise (InvalidNumberOfTypeAbstraction pos)
 
-and value_definition ?(allow_value_elaboration=false) env (ValueDef (pos, ts, ps, (x, xty), e)) =
+and value_definition env (ValueDef (pos, ts, ps, (x, xty), e)) =
   let env' = introduce_type_parameters env ts in
-  check_wf_scheme env ts xty;
+  let env' = introduce_typing_context env' ps in
+  let e = eforall pos ts e in
+  let e, ty = expression env' e in
+  let b = (x, ty) in
+  check_equal_types pos xty ty;
+  (ValueDef (pos, ts, [], b, EForall (pos, ts, e)), 
+   bind_scheme x ts ty env)
 
-  if is_value_form e || allow_value_elaboration then begin
-    if not allow_value_elaboration && not (is_function xty) && ps <> [] then
-      raise (ClassPredicateInValueForbidden(pos,x))
-    else
-      let e = eforall pos ts e in
-      Printf.printf "Type before dict intro: %s\n" (string_of_type xty);
-      let e, xty, env' = introduce_dictionaries_lambda env' ps e xty in
-      Printf.printf "Type after dict intro: %s\n" (string_of_type xty);
-      let e, ty = expression env' e in
-      Printf.printf "Type of expression: %s\n" (string_of_type ty);
-      let b = (x, ty) in
-      Printf.printf "ENter...\n";
-      check_equal_types pos xty ty;
-      Printf.printf "Out...\n";
-      (ValueDef (pos, ts, [], b, EForall (pos, ts, e)),
-       bind_scheme x ts ty env)
-  end else begin
-    if ts <> [] then
-      raise (ValueRestriction pos)
-    else
-      let e = eforall pos [] e in
-      let e, ty = expression env' e in
-      let b = (x, ty) in
-      check_equal_types pos xty ty;
-      (ValueDef (pos, [], [], b, e), bind_simple x ty env)
-  end
+and value_elaboration force_elaboration env (ValueDef (pos, ts, ps, (x, ty), e)) =
+  let env' = introduce_type_parameters env ts in
+  check_wf_scheme env' ts ty;
+
+  if not force_elaboration && not (is_function ty) && ps <> [] then
+    raise (ClassPredicateInValueForbidden(pos,x))
+  else if not (is_value_form e) && ts <> [] then
+    raise (ValueRestriction pos)
+  else if ps <> [] then
+    let e = eforall pos ts e in
+    let e, ty = introduce_dictionaries ts ps e ty in
+    ValueDef(pos, ts, ps, (x, ty), e)
+  else
+    ValueDef(pos, ts, ps, (x, ty), e)
 
 and value_declaration env (ValueDef (pos, ts, ps, (x, ty), e)) =
   bind_scheme x ts ty env

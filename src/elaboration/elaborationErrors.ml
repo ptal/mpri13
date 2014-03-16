@@ -194,3 +194,7 @@ let handle_error f =
       fatal' pos (Printf.sprintf
                    "  Use of type classes in value `%s' is forbidden."
                    value_name)
+    | SameValueNameAsMemberName(pos, Name value_name) ->
+      fatal' pos (Printf.sprintf
+               "  Cannot declare class member `%s' with the same name as a previous value declaration."
+               value_name)
